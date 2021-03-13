@@ -42,22 +42,23 @@ function saveUUID(uuid) {
     fs.writeFileSync(process.cwd() + "/" + config.SRVR_UUID, JSON.stringify(ExistingList));
 }
 
-function deObfuscateStringByUUID(string, uuid) {
+const letterMap = {
+    a: 0, b: 1, c: 2, d: 3, e: 4, f: 5, 
+    g: 6, h: 7, i: 8, j: 9, k: 10, l: 11,
+    m: 12, n: 13, o: 14, p: 15, q: 16, r: 17, 
+    s: 18, t: 19, u: 20, v: 21, w: 22, x: 23, 
+    y: 24, z: 25
+};
+let caesarCipher = function (str, key) {
+    return str.toUpperCase().replace(/[A-Z]/g, c => String.fromCharCode((c.charCodeAt(0)-65 + key ) % 26 + 65));
+}
+
+function obfuscateStringByUUID(string, uuid, zeroMinus = false) {
     string = string.toLowerCase()
-    let caesarCipher = function (str, key) {
-        return str.toUpperCase().replace(/[A-Z]/g, c => String.fromCharCode((c.charCodeAt(0)-65 + key ) % 26 + 65));
-    }
     //const serverlist = getServerList();
     //var SERVER_ENTRY = cleanStr(SERVER_DETAILS.IP + SERVER_DETAILS.PORT);
     const UUID = uuid.replace(/[-]/g, "");
     var OutputString = "";
-    const letterMap = {
-        a: 0, b: 1, c: 2, d: 3, e: 4, f: 5, 
-        g: 6, h: 7, i: 8, j: 9, k: 10, l: 11,
-        m: 12, n: 13, o: 14, p: 15, q: 16, r: 17, 
-        s: 18, t: 19, u: 20, v: 21, w: 22, x: 23, 
-        y: 24, z: 25
-    };
     var UUID_ITERATOR = 0;
     for (i = 0; i < string.length; i++) {
         var CaesarMap = 0;
@@ -70,44 +71,18 @@ function deObfuscateStringByUUID(string, uuid) {
         } else {
             CaesarMap = Number(UUID[UUID_ITERATOR]);
         }
-        OutputString += caesarCipher(string[i], 0 - CaesarMap)
+        if (zeroMinus) {
+            OutputString += caesarCipher(string[i], 0 - CaesarMap)
+        } else {
+            OutputString += caesarCipher(string[i], CaesarMap)
+        }
         //console.log(`uuid_len: ${UUID.length}, letter: ${string[i]}, uuid_it: ${UUID_ITERATOR}, CM: ${CaesarMap}, output: ${caesarCipher(string[i], CaesarMap)}`)
     }
     return OutputString;
 }
 
-function obfuscateStringByUUID(string, uuid) {
-    string = string.toLowerCase()
-    let caesarCipher = function (str, key) {
-        return str.toUpperCase().replace(/[A-Z]/g, c => String.fromCharCode((c.charCodeAt(0)-65 + key ) % 26 + 65));
-    }
-    //const serverlist = getServerList();
-    //var SERVER_ENTRY = cleanStr(SERVER_DETAILS.IP + SERVER_DETAILS.PORT);
-    const UUID = uuid.replace(/[-]/g, "");
-    var OutputString = "";
-    const letterMap = {
-        a: 0, b: 1, c: 2, d: 3, e: 4, f: 5, 
-        g: 6, h: 7, i: 8, j: 9, k: 10, l: 11,
-        m: 12, n: 13, o: 14, p: 15, q: 16, r: 17, 
-        s: 18, t: 19, u: 20, v: 21, w: 22, x: 23, 
-        y: 24, z: 25
-    };
-    var UUID_ITERATOR = 0;
-    for (i = 0; i < string.length; i++) {
-        var CaesarMap = 0;
-        UUID_ITERATOR++;
-        if (UUID_ITERATOR > UUID.length) {
-            UUID_ITERATOR = 0;
-        }
-        if (isNaN(UUID[UUID_ITERATOR])) {
-            CaesarMap = Number(letterMap[UUID[UUID_ITERATOR]]);
-        } else {
-            CaesarMap = Number(UUID[UUID_ITERATOR]);
-        }
-        OutputString += caesarCipher(string[i], CaesarMap)
-        //console.log(`uuid_len: ${UUID.length}, letter: ${string[i]}, uuid_it: ${UUID_ITERATOR}, CM: ${CaesarMap}, output: ${caesarCipher(string[i], CaesarMap)}`)
-    }
-    return OutputString;
+function deObfuscateStringByUUID(string, uuid) {
+    return obfuscateStringByUUID(string, uuid, true);
 }
 
 var aesjs = require('aes-js');
@@ -129,6 +104,7 @@ var decryptKey = function(toDecrypt, pubkey) {
 
 function createEncryptedPacket(packetdata, publickey) {
     var password = crypto.randomBytes(32);
+    packetdata = JSON.stringify(packetdata)
     function encrypt(text){
         var textBytes = aesjs.utils.utf8.toBytes(text);
         var aesCtr = new aesjs.ModeOfOperation.ctr(password);
@@ -152,7 +128,8 @@ function decryptEncryptedPacket(encrypted_packet, privateKey) {
         return aesjs.utils.utf8.fromBytes(decryptedBytes);
     }
     //console.log(encrypted_packet.packetdata)
-    return decrypt(encrypted_packet.packetdata);
+    var StringObj = decrypt(encrypted_packet.packetdata)
+    return JSON.parse(StringObj)
 }
 
 function ExitProgram(message = "exit") {
@@ -271,33 +248,44 @@ function listFriend() {
 
 function parser(Command = "", Args = []) {
     function throwErr(ErrorName, OptionalErrorDetails = "None") {
-        console.log(chalk.redBright('ERROR: ['+ErrorName+'] ') + `Passed command: ${Command}; Passed arguments: ${Args}; Additional Error Details: ${OptionalErrorDetails}`)
+        console.log(chalk.redBright('ERROR: ['+ErrorName+'] ') + `Passed command: ${Command}; Passed arguments: ${ReadableArgs}; Additional Error Details: ${OptionalErrorDetails}`)
     }
     var Command = Command.toLowerCase();
+    var ReadableArgs = "none"
     if (Args.length == 0) {
         Args = [null];
+    } else {
+        ReadableArgs = Args;
     }
     if (Command == "exit") {
         ExitProgram();
+        return;
     }
     if (Command == "add-friend") {
         addFriend(Args[0]);
+        return;
     }
     if (Command == "remove-friend" || Command == "rem-friend") {
         removeFriend(Args[0]);
+        return;
     }
     if (Command == "ls-friend" || Command == "list-friend" || Command == "friend-list") {
-        listFriend()
+        listFriend();
+        return;
     }
     if (Command == "clear") {
-        console.clear()
+        console.clear();
+        return;
     }
     if (Command == "disconnect") {
         RequestServerDisconnect();
+        return;
     }
     if (Command == "conn" || Command == "connect") {
-        ConnectToPeer(Args[0])
+        ConnectToPeer(Args[0]);
+        return;
     }
+    throwErr("command not found")
     return;
 }
 
@@ -382,8 +370,15 @@ const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
 const io = require("socket.io-client");
 const socket = io(`${SERVER_DETAILS.IP}:${SERVER_DETAILS.PORT}`, {
     timeout: 10000,
+    query: "userid=" + config.C2CC_ID
 });
 socket.connect()
+
+// Runtime flags
+const flags = {
+    PEER_CONNECT_TIMEOUT: null,
+    PEER_ACCEPT_VERIF_STRING: null
+}
 
 const USER_C2CC_ID = config.C2CC_ID;
 var UUID = null;
@@ -431,15 +426,57 @@ socket.on('server_message',function(data) {
 });
 
 socket.on('server_connection_accepted', function(Encdata) {
-    const data = JSON.parse(decryptEncryptedPacket(Encdata, privateKey));
+    const data = decryptEncryptedPacket(Encdata, privateKey);
     saveUUID(data.uuid);
     savePublicKey(data.pubkey);
-    console.log('Connection established!');
+    console.log(`\n${chalk.greenBright('Connected!')}`);
+    var ServerName = data.servername;
+    var MOTD = data.motd;
+    console.log(`Server name: ${chalk.magentaBright(ServerName)}\nMessage of the day: ${chalk.magentaBright(MOTD)}\n`)
     //var one = obfuscateStringByUUID("test")
     //var two = deObfuscateStringByUUID(one)
     //console.log(one, two)
     prompt();
 })
+
+socket.on('peer_conn_res', function(Encdata) {
+    clearTimeout(flags.PEER_CONNECT_TIMEOUT)
+    const data = decryptEncryptedPacket(Encdata, privateKey);
+    if (data.acc == false) {
+        console.log(chalk.redBright("\nConnectToPeer: error: ") + "ConnectionRequest was denied by peer. Reason: " + data.reason)
+        return;
+    }
+    if (data.vstring !== flags.PEER_ACCEPT_VERIF_STRING) {
+        console.log(chalk.redBright("\nConnectToPeer: error: ") + "Inconsistent data - someone may have tampered with the data.")
+        return;
+    }
+})
+
+function ConnectToPeer(PeerID) {
+    if (PeerID === undefined || PeerID === null) {
+        console.log(chalk.redBright('ConnectToPeer: error: ') + "Need a PeerID argument.");
+        return;
+    }
+    const FriendsList = loadFriendList();
+    if (!FriendsList.includes(PeerID)) {
+        console.log(chalk.redBright('ConnectToPeer: error: ') + "You can't connect to someone who is not in your friends list, or they cannot respond to you.\nDo: "+ chalk.magentaBright('add-friend ' + PeerID));
+        return;
+    }
+    process.stdout.write(chalk.whiteBright("Sending a connect request..."))
+    const PeerConnectData = {
+        MyID: config.C2CC_ID,
+        AcceptVerifString: randomWords({ min: 3, max: 10, join: ' ' })
+    }
+    flags.PEER_ACCEPT_VERIF_STRING = PeerConnectData.AcceptVerifString;
+    const ServerList = getServerList();
+    var SERVER_ENTRY = cleanStr(SERVER_DETAILS.IP + SERVER_DETAILS.PORT)
+    var PUBKEY = ServerList[SERVER_ENTRY].PUBKEY;
+    const EncryptedData = createEncryptedPacket(PeerConnectData, PUBKEY);
+    //console.log(EncryptedData)
+    socket.emit("peer_conn_req", EncryptedData)
+    process.stdout.write(chalk.greenBright(' done!') + "\nIt may take up to 10 seconds for a request to be accepted.\n")
+    flags.PEER_CONNECT_TIMEOUT = setTimeout(function(){console.log(chalk.redBright('\nConnectToPeer: error: ') + "No response to connection request, did we lose connection?")},10000);
+}
 
 function sendMessage(message) {
     if (PeerServerID == null) {
@@ -450,28 +487,9 @@ function sendMessage(message) {
     }
     const FriendsList = loadFriendList();
     if (!FriendsList.includes(PeerServerID)) {
-        console.log(chalk.redBright('SendMessage: error: ') + "You can't send a message to someone who is not in your friend's list, or they cannot respond to you. Add them to your friends list!");
+        console.log(chalk.redBright('SendMessage: error: ') + "You can't send a message to someone who is not in your friends list, or they cannot respond to you.\nDo: "+ chalk.magentaBright('add-friend ' + PeerServerID));
         return;
     }
-}
-
-function ConnectToPeer(PeerID) {
-    const FriendsList = loadFriendList();
-    if (!FriendsList.includes(PeerID)) {
-        console.log(chalk.redBright('ConnectToPeer: error: ') + "You can't send a message to someone who is not in your friends list, or they cannot respond to you.\nDo: "+ chalk.magentaBright('add-friend ' + PeerID));
-        return;
-    }
-    console.log(chalk.whiteBright("Sending a connect request..."))
-    const PeerConnectData = {
-        MyID: config.C2CC_ID,
-        AcceptVerifString: randomWords({ min: 3, max: 10, join: ' ' })
-    }
-    const ServerList = getServerList();
-    var SERVER_ENTRY = cleanStr(SERVER_DETAILS.IP + SERVER_DETAILS.PORT)
-    var PUBKEY = ServerList[SERVER_ENTRY].PUBKEY;
-    const EncryptedData = createEncryptedPacket(PeerConnectData, PUBKEY);
-    //console.log(EncryptedData)
-    socket.emit("peer_conn_req", EncryptedData)
 }
 
 function RequestServerDisconnect() {

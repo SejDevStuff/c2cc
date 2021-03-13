@@ -6,17 +6,33 @@ var { v4 } = require('uuid');
 var fs = require('fs');
 const SupportedVersion = "IndevTestBeta";
 const SupportedVersionString = "1.0.0"
+const Config = require('./config');
 
-// SERVER CONFIG
-const MAX_CONNECTIONS = 10;
-const LISTENING_PORT = 6162;
+const MAX_CONNECTIONS = Config.MAX_CONNECTIONS;
+const LISTENING_PORT = Config.LISTENING_PORT;
 
-
-// SERVER CODE - It is best to not edit this
-var sockets = []
+var sockets = [];
+var socketNames = {};
 var SocketInformation = {};
-console.log("Starting C2CC Server on port " + LISTENING_PORT)
 
+function log(reason, message) {
+    if (reason == "CONNECT") {
+        console.log(chalk.greenBright('[Connect]') + " " + message)
+    } else if (reason == "DISCONNECT") {
+        console.log(chalk.redBright('[Disconnect]') + " " + message)
+    } else if (reason == "INFO") {
+        console.log(chalk.whiteBright('[Info]') + " " + message)
+    } else if (reason == "WARN") {
+        console.log(chalk.yellowBright('[Warning]') + " " + message)
+    } else if (reason == "ERROR") {
+        console.log(chalk.redBright('[Error]') + " " + message)
+    } else {
+        console.log(chalk.whiteBright(reason) + " " + message)
+    }
+}
+console.clear()
+console.log("Starting C2CC Server on port " + LISTENING_PORT)
+log("INFO", "Generating keypairs...")
 const crypto = require('crypto');
 
 const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
@@ -30,7 +46,7 @@ const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
         format: 'pem'
     }
 }); 
-
+log("INFO", "Generated keypairs")
 var aesjs = require('aes-js');
 
 var encryptKey = function(toEncrypt, pubkey) {
@@ -49,6 +65,7 @@ var decryptKey = function(toDecrypt, pubkey) {
 
 function createEncryptedPacket(packetdata, publickey) {
     var password = crypto.randomBytes(32);
+    packetdata = JSON.stringify(packetdata)
     function encrypt(text){
         var textBytes = aesjs.utils.utf8.toBytes(text);
         var aesCtr = new aesjs.ModeOfOperation.ctr(password);
@@ -71,7 +88,8 @@ function decryptEncryptedPacket(encrypted_packet, privateKey) {
         var decryptedBytes = aesCtr.decrypt(encryptedBytes);
         return aesjs.utils.utf8.fromBytes(decryptedBytes);
     }
-    return decrypt(encrypted_packet.packetdata);
+    var StringObject = decrypt(encrypted_packet.packetdata)
+    return JSON.parse(StringObject);
 }
 
 if (!fs.existsSync('./users.json')) {
@@ -80,6 +98,10 @@ if (!fs.existsSync('./users.json')) {
 
 try {
     var CURRENT_CONNECTIONS = 0;
+
+    function hashString(data) {
+        return crypto.createHash("sha256").update(data, "binary").digest("base64");
+    }
 
     function loadUserlist() {
         if (!fs.existsSync('./users.json')) {
@@ -124,7 +146,7 @@ try {
 
     function UpdateStatusMessage() {
         var COMPLETE_CONNECTIONS = Math.floor(CURRENT_CONNECTIONS / 2);
-        process.stdout.write(chalk.greenBright('Active connections: ') + CURRENT_CONNECTIONS + "/" + MAX_CONNECTIONS + ` | ${COMPLETE_CONNECTIONS} complete connection(s)\r`)
+        console.log(chalk.greenBright('Active connections: ') + CURRENT_CONNECTIONS + "/" + MAX_CONNECTIONS + ` | ${COMPLETE_CONNECTIONS} complete connection(s)\r`)
     }
 
     function UnregisterSocket(socket) {
@@ -139,7 +161,16 @@ try {
         SocketInformation[SocketID] = undefined;
     }
 
+    function nullUndefinedCheck(value) {
+        if (value === null || value === undefined) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
     io.on('connection', function (socket){
+        log("CONNECT", `${socket.handshake.query['userid']} has connected.`)
         CURRENT_CONNECTIONS = CURRENT_CONNECTIONS + 1;
         UpdateStatusMessage();
         if (CURRENT_CONNECTIONS > MAX_CONNECTIONS) {
@@ -149,6 +180,11 @@ try {
             UpdateStatusMessage();
         }
         socket.on('disconnect', function() {
+            if (nullUndefinedCheck(socketNames[socket.id])) {
+                log("DISCONNECT", `A user has disconnected.`)
+            } else {
+                log("DISCONNECT", `${socketNames[socket.id].name} has disconnected.`)
+            }
             CURRENT_CONNECTIONS = CURRENT_CONNECTIONS - 1;
             // UNREGISTER THE SOCKET
             UnregisterSocket(socket);
@@ -156,9 +192,16 @@ try {
         });
 
         socket.on('peer_conn_req', function(data) {
-            console.log('recv peer_conn_req')
-            decryptEncryptedPacket(data, privateKey);
-            socket.emit("server_warning", "The peer you are connecting to does not have you on their friends list.");
+            //console.log('recv peer_conn_req')
+            var decryptedData = decryptEncryptedPacket(data, privateKey);
+            const SocketID = decryptedData.MyID;
+            const sendData = {
+                acc: false,
+                reason: "Test",
+                vstring: decryptedData.AcceptVerifString
+            }
+            var encryptedData = createEncryptedPacket(sendData, SocketInformation[SocketID].publicKey);
+            socket.emit("peer_conn_res", encryptedData)
             return;
         })
 
@@ -169,6 +212,14 @@ try {
             const ProvidedUUID = data.MyUUID;
             const ProvidedVersionHash = data.VersionHash;
             const ProvidedVersionNumber = data.VersionNumber;
+
+            if (nullUndefinedCheck(SocketID) || nullUndefinedCheck(SocketPublicKey) || nullUndefinedCheck(ProvidedUUID) || nullUndefinedCheck(ProvidedVersionNumber) || nullUndefinedCheck(ProvidedVersionHash)) {
+                socket.emit("server_warning", "The authentication information provided is invalid.");
+                socket.disconnect()
+                return;
+            }
+
+            log("INFO", "Registering " + data.SockID + "...");
 
             if (ProvidedVersionHash !== SupportedVersion) {
                 if (ProvidedVersionNumber > SupportedVersionString) {
@@ -196,10 +247,10 @@ try {
             }
 
             // AUTHENTICATE USER
-            var UUID = getUUID(SocketID);
             var GeneratedUUID = null;
             if (userExists(SocketID)) {
-                if (ProvidedUUID !== UUID) {
+                var UUID = getUUID(SocketID)
+                if (hashString(ProvidedUUID) !== UUID) {
                     socket.emit("server_warning", "The authentication information provided is invalid.");
                     socket.disconnect();
                     return;
@@ -207,28 +258,37 @@ try {
             }
 
             GeneratedUUID = v4();
-            registerUser(SocketID, GeneratedUUID);
+            registerUser(SocketID, hashString(GeneratedUUID));
 
             const SocketQuickAccessData = {
                 publicKey: SocketPublicKey,
                 id: SocketID,
+                uuid: ProvidedUUID
             }
             SocketInformation[SocketID] = SocketQuickAccessData;
             sockets.push({socket_obj: socket, socket_id: SocketID});
 
             const SendData = {
                 uuid: GeneratedUUID,
-                pubkey: publicKey
+                pubkey: publicKey,
+                servername: Config.HOSTNAME,
+                motd: Config.MOTD
             };
 
-            const EncryptedSendData = createEncryptedPacket(JSON.stringify(SendData), SocketInformation[SocketID].publicKey)
+            const Name = {
+                name: SocketID
+            }
+
+            socketNames[socket.id] = Name;
+
+            const EncryptedSendData = createEncryptedPacket(SendData, SocketInformation[SocketID].publicKey)
             socket.emit("server_connection_accepted", EncryptedSendData); // accept the connection
+            log("INFO", "Finished registering " + data.SockID);
         });
     });
 
     http.listen(LISTENING_PORT, function () {
     console.log('C2CC Server listening on port '+LISTENING_PORT);
-    process.stdout.write(chalk.greenBright('Active connections: ') + CURRENT_CONNECTIONS + "/" + MAX_CONNECTIONS + ` | 0 complete connection(s)\r`)
     });
     process.on('SIGINT', function() {
         var COMPLETE_CONNECTIONS = Math.floor(CURRENT_CONNECTIONS / 2);
@@ -236,9 +296,12 @@ try {
         console.log("\nDoing a safe shutdown...")
         for (i = 0; i < sockets.length; i++) {
             const currentSocket = sockets[i].socket_obj;
+            const SockName = sockets[i].socket_id;
+            log("INFO", "Unregistering socket with ID of '"+SockName+"'")
             UnregisterSocket(currentSocket);
             currentSocket.emit("server_warning", "The server has shut down");
             currentSocket.disconnect()
+            log("INFO", "Unregistered socket with ID of '"+SockName+"'")
         }
         console.log("Bye!")
         process.exit()
