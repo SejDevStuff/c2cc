@@ -34,3 +34,35 @@ module.exports.FRIENDS_LIST = "data/friends.dat"
     Location of server uuid file
 */
 module.exports.SRVR_UUID = "data/servers.dat"
+
+/*
+    Location of Master Server Key Hash
+*/
+module.exports.MASTER_HASH_LOC = "/data/master_hash.dat"
+
+/*
+    How to handle peer connection requests
+
+    "SYNC"
+    This allows you to talk to one person at a time
+
+    "ASYNC"
+    This allows you to talk to more than one person at a time,
+    but you can only respond to one person. The other people's messages
+    are shown in the background
+
+    "BLOCKALL"
+    This is like a "do not disturb" and blocks all incoming connections
+*/
+module.exports.PEER_CONN_HANDLING = "SYNC"
+
+/*
+    Prefix which allows you to run commands while in a chat
+*/
+module.exports.CHAT_COMMAND_PREFIX = "/"
+
+/*
+    GIVE_SRVR_CHOICE = On startup, give the choice to either connect to the server listed on the config or enter your own server details
+    If true, you will be given the opportunity to enter your own server details on every startup. If false, it will take the server address from the config all the time
+*/
+module.exports.GIVE_SRVR_CHOICE = false;

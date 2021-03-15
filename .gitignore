@@ -1,5 +1,18 @@
-data/
+# Standard node stuff
 node_modules/
+
+# Client generated file
 .setup
+data/
+
+# Server generated file
 users.json
+
+# My test js file
 1.js
+
+# This is the other client which I use to test features
+client_2/
+
+# my todo list
+todo.txt

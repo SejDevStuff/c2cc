@@ -4,9 +4,8 @@ var io = require('socket.io')(http);
 var chalk = require('chalk');
 var { v4 } = require('uuid');
 var fs = require('fs');
-const SupportedVersion = "IndevTestBeta";
-const SupportedVersionString = "1.0.0"
-const Config = require('./config');
+const SupportedVersionNumber = 0001;
+var Config = require('./config');
 
 const MAX_CONNECTIONS = Config.MAX_CONNECTIONS;
 const LISTENING_PORT = Config.LISTENING_PORT;
@@ -14,6 +13,7 @@ const LISTENING_PORT = Config.LISTENING_PORT;
 var sockets = [];
 var socketNames = {};
 var SocketInformation = {};
+var ConnectionSockets = [];
 
 function log(reason, message) {
     if (reason == "CONNECT") {
@@ -21,7 +21,7 @@ function log(reason, message) {
     } else if (reason == "DISCONNECT") {
         console.log(chalk.redBright('[Disconnect]') + " " + message)
     } else if (reason == "INFO") {
-        console.log(chalk.whiteBright('[Info]') + " " + message)
+        console.log(chalk.gray('[Info]') + " " + message)
     } else if (reason == "WARN") {
         console.log(chalk.yellowBright('[Warning]') + " " + message)
     } else if (reason == "ERROR") {
@@ -103,6 +103,10 @@ try {
         return crypto.createHash("sha256").update(data, "binary").digest("base64");
     }
 
+    function md5(data) {
+        return crypto.createHash("sha512").update(data, "binary").digest("base64");
+    }
+
     function loadUserlist() {
         if (!fs.existsSync('./users.json')) {
             fs.writeFileSync('./users.json', "{}")
@@ -157,7 +161,21 @@ try {
                 SocketID = currentSocket.socket_id
             }
         }
+        for (i = 0; i < ConnectionSockets.length; i++) {
+            if (ConnectionSockets[i].main_socket_object == socket) {
+                try {
+                    var Peer = ConnectionSockets[i].peer_socket_object;
+                    var PeerID = ConnectionSockets[i].peer_socket_id;
+                    const SendData = {
+                        PeerID: ConnectionSockets[i].main_socket_id
+                    }
+                    Peer.emit("server_warning", "The peer you were talking to has disconnected from the server")
+                    Peer.emit("disconnect_from_user", createEncryptedPacket(SendData, SocketInformation[PeerID].publicKey))
+                } catch {}
+            }
+        }
         sockets = sockets.filter(data => data.socket_obj != socket);
+        ConnectionSockets = ConnectionSockets.filter(data => data.main_socket_object != socket);
         SocketInformation[SocketID] = undefined;
     }
 
@@ -166,6 +184,14 @@ try {
             return true;
         } else {
             return false;
+        }
+    }
+
+    function isOnline(socketID) {
+        if (nullUndefinedCheck(SocketInformation[socketID])) {
+            return false;
+        } else {
+            return true;
         }
     }
 
@@ -191,17 +217,120 @@ try {
             UpdateStatusMessage();
         });
 
+        socket.on('req_discon_from_me', function(data) {
+            var decryptedData = decryptEncryptedPacket(data, privateKey);
+            const PeerID = decryptedData.PeerID;
+            const SocketID = decryptedData.MyID;
+            if (!isOnline(PeerID)) {
+                return;
+            }
+            const PeerSocket = SocketInformation[PeerID].socketObject;
+            const SendData = {
+                PeerID: SocketID
+            }
+            log("INFO", "Recieved a DisconnectFromMe packet from " + SocketID + " wishing to disconnect from " + PeerID);
+            PeerSocket.emit("disconnect_from_user", createEncryptedPacket(SendData, SocketInformation[PeerID].publicKey))
+        })
+
         socket.on('peer_conn_req', function(data) {
             //console.log('recv peer_conn_req')
             var decryptedData = decryptEncryptedPacket(data, privateKey);
+            const VerificationString = decryptedData.AcceptVerifString;
             const SocketID = decryptedData.MyID;
-            const sendData = {
+            const PeerID = decryptedData.ConnectToID;
+            const MainPubKey = SocketInformation[SocketID].publicKey;
+            if (!isOnline(PeerID)) {
+                const SendData = {
+                    acc: false,
+                    reason: "The user you are trying to contact is offline.",
+                    vstring: VerificationString,
+                    responseFrom: null,
+                    peerPublicKey: null
+                };
+                socket.emit("peer_conn_res", createEncryptedPacket(SendData, MainPubKey))
+                return;
+            }
+            const PeerPubKey = SocketInformation[PeerID].publicKey;
+            const PeerSocket = SocketInformation[PeerID].socketObject;
+            log("INFO", "Recieved a ConnectionRequest packet from " + SocketID + " wishing to connect to " + PeerID);
+            /*const sendData = {
                 acc: false,
                 reason: "Test",
-                vstring: decryptedData.AcceptVerifString
+                //vstring: decryptedData.AcceptVerifString
+                vstring: "Test"
             }
             var encryptedData = createEncryptedPacket(sendData, SocketInformation[SocketID].publicKey);
-            socket.emit("peer_conn_res", encryptedData)
+            socket.emit("peer_conn_res", encryptedData)*/
+            const SendData = {
+                userID: SocketID,
+                pubKey: PeerPubKey
+            }
+            PeerSocket.emit("server_peerConn_req", createEncryptedPacket(SendData, PeerPubKey));
+            var IgnoreResponse = false;
+            const ResponseNotRecievedTimeout = setTimeout(function(){
+                if (!isOnline(PeerID)) {
+                    const SendData = {
+                        acc: false,
+                        reason: "The user you are trying to contact is offline.",
+                        vstring: VerificationString,
+                        responseFrom: null,
+                        peerPublicKey: null
+                    };
+                    socket.emit("peer_conn_res", createEncryptedPacket(SendData, MainPubKey))
+                    IgnoreResponse = true
+                    return;
+                } else {
+                    const SendData = {
+                        acc: false,
+                        reason: "The connection packet could not be sent to peer.",
+                        vstring: VerificationString,
+                        responseFrom: null,
+                        peerPublicKey: null
+                    };
+                    socket.emit("peer_conn_res", createEncryptedPacket(SendData, MainPubKey))
+                    IgnoreResponse = true
+                    return;
+                }
+            },9000);
+            //log("INFO", `Sent a ConnectionRequestFromServer packet to ${PeerID}.`)
+            PeerSocket.on('peerConn_res', function(data) {
+                clearTimeout(ResponseNotRecievedTimeout);
+                if (IgnoreResponse) {
+                    return;
+                }
+                //log("INFO", `Got a ConnectionRequest_Response packet from ${PeerID}.`)
+                const DecryptedAnswer = decryptEncryptedPacket(data, privateKey);
+                const SendData = {
+                    acc: false,
+                    reason: "Unable to process request, try again later",
+                    vstring: VerificationString,
+                    responseFrom: PeerID,
+                    peerPublicKey: PeerPubKey
+                };
+                if (DecryptedAnswer.response == "deny") {
+                    SendData.acc = false;
+                    SendData.reason = DecryptedAnswer.reason;
+                } else {
+                    SendData.acc = true;
+                    SendData.reason = DecryptedAnswer.reason;
+                    const pushData = {
+                        main_socket_object: socket,
+                        peer_socket_object: PeerSocket,
+                        main_socket_id: SocketID,
+                        peer_socket_id: PeerID
+                    }
+                    const pushDataReverse = {
+                        main_socket_object: PeerSocket,
+                        peer_socket_object: socket,
+                        main_socket_id: PeerID,
+                        peer_socket_id: SocketID
+                    }
+                    ConnectionSockets.push(pushData);
+                    ConnectionSockets.push(pushDataReverse);
+                }
+                socket.emit("peer_conn_res", createEncryptedPacket(SendData, MainPubKey))
+                //log("INFO", `Relayed ConnectionRequest_Response packet to ${SocketID}.`)
+            }) 
             return;
         })
 
@@ -209,27 +338,24 @@ try {
             // REGISTER THE SOCKET
             const SocketID = data.SockID;
             const SocketPublicKey = data.SockPubKey;
-            const ProvidedUUID = data.MyUUID;
-            const ProvidedVersionHash = data.VersionHash;
-            const ProvidedVersionNumber = data.VersionNumber;
+            var ProvidedUUID = data.MyUUID;
+            const ProvidedVersion = data.Version;
 
-            if (nullUndefinedCheck(SocketID) || nullUndefinedCheck(SocketPublicKey) || nullUndefinedCheck(ProvidedUUID) || nullUndefinedCheck(ProvidedVersionNumber) || nullUndefinedCheck(ProvidedVersionHash)) {
+            if (nullUndefinedCheck(SocketID) || nullUndefinedCheck(SocketPublicKey) || nullUndefinedCheck(ProvidedVersion)) {
                 socket.emit("server_warning", "The authentication information provided is invalid.");
+                log("WARN", SocketID + " failed at nullUndefinedCheck():Authentication-1")
                 socket.disconnect()
                 return;
             }
 
             log("INFO", "Registering " + data.SockID + "...");
 
-            if (ProvidedVersionHash !== SupportedVersion) {
-                if (ProvidedVersionNumber > SupportedVersionString) {
-                    socket.emit("server_warning", "Your client is too new for this server.");
-                } else if (ProvidedVersionNumber == SupportedVersionString) {
-                    socket.emit("server_warning", "Your client has the same version number, yet it is not a version hash the server recognises.{NEWLINE}Most likely you have a patch which this server does not support");
-                } else {
+            if (ProvidedVersion !== SupportedVersionNumber) {
+                if (ProvidedVersion < SupportedVersionNumber) {
                     socket.emit("server_warning", "Your client is too old for this server.");
+                } else {
+                    socket.emit("server_warning", "Your client is too new for this server.");
                 }
-                socket.emit("server_warning", "This server needs a client of version v" + SupportedVersionString + ", your version is v" + ProvidedVersionNumber)
                 socket.disconnect()
                 return;
             }
@@ -242,28 +368,33 @@ try {
 
             if (SocketPublicKey.trim() == "" || SocketID.trim() == "" || SocketPublicKey === null || SocketPublicKey === undefined || SocketID === undefined || SocketID === null) {
                 socket.emit("server_warning", "The authentication information provided is invalid.");
+                log("WARN", SocketID + " failed at credentialsValidateCheck():Authentication-2")
                 socket.disconnect()
                 return;
             }
 
             // AUTHENTICATE USER
             var GeneratedUUID = null;
+            ProvidedUUID = ProvidedUUID.replace(/["]/g, "");
             if (userExists(SocketID)) {
                 var UUID = getUUID(SocketID)
-                if (hashString(ProvidedUUID) !== UUID) {
+                if (md5(ProvidedUUID) !== UUID) {
                     socket.emit("server_warning", "The authentication information provided is invalid.");
+                    log("WARN", SocketID + " failed at verifyProvidedUUID():Authentication-3");
                     socket.disconnect();
                     return;
                 }
             }
 
-            GeneratedUUID = v4();
-            registerUser(SocketID, hashString(GeneratedUUID));
+            const randomWords = require('random-words')
+            GeneratedUUID = hashString(randomWords({ min: 3, max: 10, join: ' ' }) + " " + v4());
+            registerUser(SocketID, md5(GeneratedUUID.toString()));
 
             const SocketQuickAccessData = {
                 publicKey: SocketPublicKey,
                 id: SocketID,
-                uuid: ProvidedUUID
+                uuid: ProvidedUUID,
+                socketObject: socket
             }
             SocketInformation[SocketID] = SocketQuickAccessData;
             sockets.push({socket_obj: socket, socket_id: SocketID});
@@ -292,16 +423,13 @@ try {
     });
     process.on('SIGINT', function() {
         var COMPLETE_CONNECTIONS = Math.floor(CURRENT_CONNECTIONS / 2);
-        process.stdout.write(chalk.greenBright('Active connections: ') + CURRENT_CONNECTIONS + "/" + MAX_CONNECTIONS + ` | ${COMPLETE_CONNECTIONS} complete connection(s)\r`)
+        process.stdout.write(chalk.greenBright('Active connections: ') + CURRENT_CONNECTIONS + "/" + MAX_CONNECTIONS + ` | ${COMPLETE_CONNECTIONS} complete connection(s)\n`)
         console.log("\nDoing a safe shutdown...")
         for (i = 0; i < sockets.length; i++) {
             const currentSocket = sockets[i].socket_obj;
-            const SockName = sockets[i].socket_id;
-            log("INFO", "Unregistering socket with ID of '"+SockName+"'")
             UnregisterSocket(currentSocket);
             currentSocket.emit("server_warning", "The server has shut down");
             currentSocket.disconnect()
-            log("INFO", "Unregistered socket with ID of '"+SockName+"'")
         }
         console.log("Bye!")
         process.exit()
