@@ -1,6 +1,6 @@
 // Hostname: the name that shows up on your prompt, and to others when you send a message to them
 // Cannot be seen by messaging server - only by your peer, due to double encryption (see below)
-module.exports.HOSTNAME = "C2CCDefault";
+module.exports.HOSTNAME = "";
 
 /*
     Server Address: the url of the server which handles the messages and is responsible for sending
@@ -15,14 +15,14 @@ module.exports.HOSTNAME = "C2CCDefault";
 
     EXCLUDE "http://" as this will be added.
 */
-module.exports.SERVER_ADDR = "localhost";
+module.exports.SERVER_ADDR = "";
 
 
 /*
     Your c2cc id is what others use to contact you, it is like an invite ID
     It is reccommended to make it short so its easy to remember for others
 */
-module.exports.C2CC_ID = "SejIsEpic";
+module.exports.C2CC_ID = "";
 
 
 /*
@@ -83,4 +83,4 @@ module.exports.GIVE_SRVR_CHOICE = false;
         WARNING! Once this is set to a value, it cannot be set to another value again unless you delete your 
         server and friend data.
 */
-module.exports.ENCRYPT_DATA = true;
+module.exports.ENCRYPT_DATA = null;

@@ -14,89 +14,87 @@ var sockets = [];
 var socketNames = {};
 var SocketInformation = {};
 var ConnectionSockets = [];
-
-function log(reason, message) {
-    if (reason == "CONNECT") {
-        console.log(chalk.greenBright('[Connect]') + " " + message)
-    } else if (reason == "DISCONNECT") {
-        console.log(chalk.redBright('[Disconnect]') + " " + message)
-    } else if (reason == "INFO") {
-        console.log(chalk.gray('[Info]') + " " + message)
-    } else if (reason == "WARN") {
-        console.log(chalk.yellowBright('[Warning]') + " " + message)
-    } else if (reason == "ERROR") {
-        console.log(chalk.redBright('[Error]') + " " + message)
-    } else {
-        console.log(chalk.whiteBright(reason) + " " + message)
-    }
-}
-console.clear()
-console.log("Starting C2CC Server on port " + LISTENING_PORT)
-log("INFO", "Generating keypairs...")
-const crypto = require('crypto');
-
-const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
-    modulusLength: 4096,
-    publicKeyEncoding: {
-        type: 'spki',
-        format: 'pem'
-    },
-    privateKeyEncoding: {
-        type: 'pkcs8',
-        format: 'pem'
-    }
-}); 
-log("INFO", "Generated keypairs")
-var aesjs = require('aes-js');
-
-var encryptKey = function(toEncrypt, pubkey) {
-    var publicKey = pubkey;
-    var buffer = Buffer.from(toEncrypt);
-    var encrypted = crypto.publicEncrypt({key: publicKey}, buffer);
-    return encrypted.toString("base64");
-};
-
-var decryptKey = function(toDecrypt, pubkey) {
-    var privateKey = pubkey;
-    var buffer = Buffer.from(toDecrypt, "base64");
-    var decrypted = crypto.privateDecrypt({key: privateKey}, buffer);
-    return Buffer.from(decrypted, "hex")
-};
-
-function createEncryptedPacket(packetdata, publickey) {
-    var password = crypto.randomBytes(32);
-    packetdata = JSON.stringify(packetdata)
-    function encrypt(text){
-        var textBytes = aesjs.utils.utf8.toBytes(text);
-        var aesCtr = new aesjs.ModeOfOperation.ctr(password);
-        var encryptedBytes = aesCtr.encrypt(textBytes);
-        return aesjs.utils.hex.fromBytes(encryptedBytes);
-    }
-    const encrypted_pck_dat = encrypt(packetdata);
-    const packet = {
-        packetdata: encrypted_pck_dat,
-        enc_key: encryptKey(password, publickey),
-    }
-    return packet
-}
-
-function decryptEncryptedPacket(encrypted_packet, privateKey) {
-    var password = decryptKey(encrypted_packet.enc_key, privateKey)
-    function decrypt(text){
-        var encryptedBytes = aesjs.utils.hex.toBytes(text);
-        var aesCtr = new aesjs.ModeOfOperation.ctr(password);
-        var decryptedBytes = aesCtr.decrypt(encryptedBytes);
-        return aesjs.utils.utf8.fromBytes(decryptedBytes);
-    }
-    var StringObject = decrypt(encrypted_packet.packetdata)
-    return JSON.parse(StringObject);
-}
-
-if (!fs.existsSync('./users.json')) {
-    fs.writeFileSync('./users.json', "{}")
-}
-
 try {
+    function log(reason, message) {
+        if (reason == "CONNECT") {
+            console.log(chalk.greenBright('[Connect]') + " " + message)
+        } else if (reason == "DISCONNECT") {
+            console.log(chalk.redBright('[Disconnect]') + " " + message)
+        } else if (reason == "INFO") {
+            console.log(chalk.gray('[Info]') + " " + message)
+        } else if (reason == "WARN") {
+            console.log(chalk.yellowBright('[Warning]') + " " + message)
+        } else if (reason == "ERROR") {
+            console.log(chalk.redBright('[Error]') + " " + message)
+        } else {
+            console.log(chalk.whiteBright(reason) + " " + message)
+        }
+    }
+    console.clear()
+    console.log("Starting C2CC Server on port " + LISTENING_PORT)
+    log("INFO", "Generating keypairs...")
+    const crypto = require('crypto');
+
+    const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
+        modulusLength: 4096,
+        publicKeyEncoding: {
+            type: 'spki',
+            format: 'pem'
+        },
+        privateKeyEncoding: {
+            type: 'pkcs8',
+            format: 'pem'
+        }
+    }); 
+    log("INFO", "Generated keypairs")
+    var aesjs = require('aes-js');
+
+    var encryptKey = function(toEncrypt, pubkey) {
+        var publicKey = pubkey;
+        var buffer = Buffer.from(toEncrypt);
+        var encrypted = crypto.publicEncrypt({key: publicKey}, buffer);
+        return encrypted.toString("base64");
+    };
+
+    var decryptKey = function(toDecrypt, pubkey) {
+        var privateKey = pubkey;
+        var buffer = Buffer.from(toDecrypt, "base64");
+        var decrypted = crypto.privateDecrypt({key: privateKey}, buffer);
+        return Buffer.from(decrypted, "hex")
+    };
+
+    function createEncryptedPacket(packetdata, publickey) {
+        var password = crypto.randomBytes(32);
+        packetdata = JSON.stringify(packetdata)
+        function encrypt(text){
+            var textBytes = aesjs.utils.utf8.toBytes(text);
+            var aesCtr = new aesjs.ModeOfOperation.ctr(password);
+            var encryptedBytes = aesCtr.encrypt(textBytes);
+            return aesjs.utils.hex.fromBytes(encryptedBytes);
+        }
+        const encrypted_pck_dat = encrypt(packetdata);
+        const packet = {
+            packetdata: encrypted_pck_dat,
+            enc_key: encryptKey(password, publickey),
+        }
+        return packet
+    }
+
+    function decryptEncryptedPacket(encrypted_packet, privateKey) {
+        var password = decryptKey(encrypted_packet.enc_key, privateKey)
+        function decrypt(text){
+            var encryptedBytes = aesjs.utils.hex.toBytes(text);
+            var aesCtr = new aesjs.ModeOfOperation.ctr(password);
+            var decryptedBytes = aesCtr.decrypt(encryptedBytes);
+            return aesjs.utils.utf8.fromBytes(decryptedBytes);
+        }
+        var StringObject = decrypt(encrypted_packet.packetdata)
+        return JSON.parse(StringObject);
+    }
+
+    if (!fs.existsSync('./users.json')) {
+        fs.writeFileSync('./users.json', "{}")
+    }
     var CURRENT_CONNECTIONS = 0;
 
     function hashString(data) {
@@ -195,6 +193,8 @@ try {
         }
     }
 
+    var DONT_UNREGISTER = false;
+
     io.on('connection', function (socket){
         log("CONNECT", `${socket.handshake.query['userid']} has connected.`)
         CURRENT_CONNECTIONS = CURRENT_CONNECTIONS + 1;
@@ -213,7 +213,9 @@ try {
             }
             CURRENT_CONNECTIONS = CURRENT_CONNECTIONS - 1;
             // UNREGISTER THE SOCKET
-            UnregisterSocket(socket);
+            if (DONT_UNREGISTER == false) {
+                UnregisterSocket(socket);
+            }
             UpdateStatusMessage();
         });
 
@@ -263,7 +265,7 @@ try {
             socket.emit("peer_conn_res", encryptedData)*/
             const SendData = {
                 userID: SocketID,
-                pubKey: PeerPubKey
+                pubKey: MainPubKey
             }
             PeerSocket.emit("server_peerConn_req", createEncryptedPacket(SendData, PeerPubKey));
             var IgnoreResponse = false;
@@ -334,6 +336,23 @@ try {
             return;
         })
 
+        socket.on('SendMessageToClient', function(data) {
+            /*
+                const SocketQuickAccessData = {
+                    publicKey: SocketPublicKey,
+                    id: SocketID,
+                    uuid: ProvidedUUID,
+                    socketObject: socket
+                }
+            */
+           const Decrypted = decryptEncryptedPacket(data, privateKey);
+           const ToSendToClient = Decrypted.EncryptedClientData;
+           const PeerID = Decrypted.PeerID;
+           const PeerSocketObject = SocketInformation[PeerID].socketObject;
+           const PeerSocketPubKey = SocketInformation[PeerID].publicKey;
+           PeerSocketObject.emit('_sentMessage_', createEncryptedPacket(ToSendToClient, PeerSocketPubKey));
+        })
+
         socket.on('socket_provide_data', function(data) {
             // REGISTER THE SOCKET
             const SocketID = data.SockID;
@@ -375,9 +394,9 @@ try {
 
             // AUTHENTICATE USER
             var GeneratedUUID = null;
-            ProvidedUUID = ProvidedUUID.replace(/["]/g, "");
             if (userExists(SocketID)) {
                 var UUID = getUUID(SocketID)
+                ProvidedUUID = ProvidedUUID.replace(/["]/g, "");
                 if (md5(ProvidedUUID) !== UUID) {
                     socket.emit("server_warning", "The authentication information provided is invalid.");
                     log("WARN", SocketID + " failed at verifyProvidedUUID():Authentication-3");
@@ -426,15 +445,35 @@ try {
         process.stdout.write(chalk.greenBright('Active connections: ') + CURRENT_CONNECTIONS + "/" + MAX_CONNECTIONS + ` | ${COMPLETE_CONNECTIONS} complete connection(s)\n`)
         console.log("\nDoing a safe shutdown...")
         for (i = 0; i < sockets.length; i++) {
+            const sockID = sockets[i].socket_id;
             const currentSocket = sockets[i].socket_obj;
-            UnregisterSocket(currentSocket);
+            log("INFO", "Unregistering " + sockID)
+            //UnregisterSocket(currentSocket);
             currentSocket.emit("server_warning", "The server has shut down");
+            DONT_UNREGISTER = true;
             currentSocket.disconnect()
         }
         console.log("Bye!")
         process.exit()
     });
 } catch {
-    process.stdout.write("\n");
+    var COMPLETE_CONNECTIONS = Math.floor(CURRENT_CONNECTIONS / 2);
+    process.stdout.write(chalk.greenBright('Active connections: ') + CURRENT_CONNECTIONS + "/" + MAX_CONNECTIONS + ` | ${COMPLETE_CONNECTIONS} complete connection(s)\n`)
+    console.log("\nDoing a safe shutdown...")
+    for (i = 0; i < sockets.length; i++) {
+        const sockID = sockets[i].socket_id;
+        const currentSocket = sockets[i].socket_obj;
+        log("INFO", "Unregistering " + sockID)
+        //UnregisterSocket(currentSocket);
+        currentSocket.emit("server_warning", "The server is restarting after a crash");
+        DONT_UNREGISTER = true;
+        currentSocket.disconnect()
+    }
+    console.log("Bye!")
+    require("child_process").spawn(process.argv.shift(), process.argv, {
+        cwd: process.cwd(),
+        detached : true,
+        stdio: "inherit"
+    });
     process.exit()
 }

@@ -9,56 +9,60 @@ const crypto = require('crypto');
 const Version = 0001
 const randomWords = require('random-words')
 const promptsync = require('prompt-sync')();
-var config = require('./config');
 var PROGRAM_INITALISED = false;
 var DECRYPTION_KEY = "";
-//console.clear()
+console.clear();
 
-function hashString(data) {
-    return crypto.createHash("sha256").update(data, "binary").digest("base64");
+function ExitProgram(message = "exit") {
+    console.log(chalk.yellowBright(message))
+    RequestServerDisconnect()
+    process.exit()
 }
 
-if (!fs.existsSync(process.cwd()+config.MASTER_HASH_LOC)) {
-    var KeyInput = promptsync("Create a master key to encrypt and decrypt your server data: ", {echo: "*"});
-    if (KeyInput === undefined || KeyInput === null) {
-        console.log("Malformed input. Exiting...");
-        process.exit();
+function ProgramError(ErrorName, ErrorMessage) {
+    console.log(`${chalk.redBright("[" + ErrorName + "]")} ${chalk.whiteBright(ErrorMessage)}`);
+    ExitProgram("Program exited on error.");
+}
+
+if (!fs.existsSync('./config.js')) {
+    ProgramError("MISSING_CONFIG_FILE", "Missing config file: this is needed for this program to function")
+}
+var config = require('./config');
+var ENCRYPT_DATA = config.ENCRYPT_DATA;
+
+function isAppropriatePeerID(providedID) {
+    if (providedID == config.C2CC_ID) {
+        console.log("isAppropriatePeerID(): failed check: " + `${providedID} (peerID) is the same as ${config.C2CC_ID} (C2CC_ID)`)
+        return false;
     }
-    KeyInput = KeyInput.trim();
-    if (KeyInput == "") {
-        console.log("Input cannot be empty. Exiting...");
-        process.exit();
+    if (providedID === null || providedID === undefined) {
+        console.log("isAppropriatePeerID(): failed check: " + `${providedID} (peerID) is null or undefined`)
+        return false;
     }
-    InputHash = hashString(KeyInput);
-    fs.writeFileSync(process.cwd() + config.MASTER_HASH_LOC, InputHash);
-    InputBuffer = Buffer.from(KeyInput, 'utf-8');
-    if (InputBuffer.length < 32) {
-        var PaddingBufferLength = 32 - InputBuffer.length;
-        var PaddingBuffer = Buffer.alloc(PaddingBufferLength);
-        var TotalBufferLength = InputBuffer.length + PaddingBuffer.length;
-        DECRYPTION_KEY = Buffer.concat([InputBuffer, PaddingBuffer], TotalBufferLength);
-    } else if (InputBuffer.length > 32) {
-        var RemovalBytes = InputBuffer.length - 32;
-        DECRYPTION_KEY = InputBuffer.slice(0, InputBuffer.length - RemovalBytes);
-    } else {
-        DECRYPTION_KEY = InputBuffer
-    }
-    //DECRYPTION_KEY = Buffer.from(input, 'utf-8');
-} else {
-    var KeyInput = promptsync("Enter server master key: ", {echo: "*"});
-    if (KeyInput === undefined || KeyInput === null) {
-        console.log("Malformed input. Exiting...");
-        process.exit();
-    }
-    KeyInput = KeyInput.trim();
-    if (KeyInput == "") {
-        console.log("Input cannot be empty. Exiting...");
-        process.exit();
-    }
-    InputHash = hashString(KeyInput);
-    const CorrectInputHash = fs.readFileSync(process.cwd() + config.MASTER_HASH_LOC, 'utf-8');
-    if (CorrectInputHash == InputHash) {
-        console.log("Key correct!");
+    return true;
+}
+
+if (ENCRYPT_DATA === null || ENCRYPT_DATA === undefined) {
+    ProgramError("MISSING_CONFIG_VALUE", "Please configure the 'ENCRYPT_DATA' setting in the config file.")
+}
+
+function hashString(data) {
+    return crypto.createHash("sha512").update(data, "binary").digest("base64");
+}
+if (ENCRYPT_DATA) {
+    if (!fs.existsSync(process.cwd()+config.MASTER_HASH_LOC)) {
+        var KeyInput = promptsync("Create a master key to encrypt and decrypt your server data: ", {echo: "*"});
+        if (KeyInput === undefined || KeyInput === null) {
+            console.log("Malformed input. Exiting...");
+            process.exit();
+        }
+        KeyInput = KeyInput.trim();
+        if (KeyInput == "") {
+            console.log("Input cannot be empty. Exiting...");
+            process.exit();
+        }
+        InputHash = hashString(KeyInput);
+        fs.writeFileSync(process.cwd() + config.MASTER_HASH_LOC, InputHash);
         InputBuffer = Buffer.from(KeyInput, 'utf-8');
         if (InputBuffer.length < 32) {
             var PaddingBufferLength = 32 - InputBuffer.length;
@@ -71,9 +75,38 @@ if (!fs.existsSync(process.cwd()+config.MASTER_HASH_LOC)) {
         } else {
             DECRYPTION_KEY = InputBuffer
         }
+        //DECRYPTION_KEY = Buffer.from(input, 'utf-8');
     } else {
-        console.log("Incorrect key :(");
-        process.exit();
+        var KeyInput = promptsync("Enter server master key: ", {echo: "*"});
+        if (KeyInput === undefined || KeyInput === null) {
+            console.log("Malformed input. Exiting...");
+            process.exit();
+        }
+        KeyInput = KeyInput.trim();
+        if (KeyInput == "") {
+            console.log("Input cannot be empty. Exiting...");
+            process.exit();
+        }
+        InputHash = hashString(KeyInput);
+        const CorrectInputHash = fs.readFileSync(process.cwd() + config.MASTER_HASH_LOC, 'utf-8');
+        if (CorrectInputHash == InputHash) {
+            console.log("Key correct!");
+            InputBuffer = Buffer.from(KeyInput, 'utf-8');
+            if (InputBuffer.length < 32) {
+                var PaddingBufferLength = 32 - InputBuffer.length;
+                var PaddingBuffer = Buffer.alloc(PaddingBufferLength);
+                var TotalBufferLength = InputBuffer.length + PaddingBuffer.length;
+                DECRYPTION_KEY = Buffer.concat([InputBuffer, PaddingBuffer], TotalBufferLength);
+            } else if (InputBuffer.length > 32) {
+                var RemovalBytes = InputBuffer.length - 32;
+                DECRYPTION_KEY = InputBuffer.slice(0, InputBuffer.length - RemovalBytes);
+            } else {
+                DECRYPTION_KEY = InputBuffer
+            }
+        } else {
+            console.log("Incorrect key :(");
+            process.exit();
+        }
     }
 }
 
@@ -118,7 +151,7 @@ function obfuscateStringByUUID(string, uuid, zeroMinus = false) {
 }
 
 function deObfuscateStringByUUID(string, uuid) {
-    return obfuscateStringByUUID(string, uuid, true);
+    return obfuscateStringByUUID(string, uuid, true); // run obfuscate on reverse, with a minus.
 }
 
 var aesjs = require('aes-js');
@@ -168,9 +201,13 @@ function decryptEncryptedPacket(encrypted_packet, privateKey) {
 
 function getServerList() {
     if (fs.existsSync(process.cwd() + "/" + config.SRVR_UUID)) {
-        var encryptedData = fs.readFileSync(process.cwd() + "/" + config.SRVR_UUID, 'utf-8');
-        var decryptedData = decrypt(encryptedData, DECRYPTION_KEY);
-        return JSON.parse(decryptedData);
+        if (ENCRYPT_DATA) {
+            var encryptedData = fs.readFileSync(process.cwd() + "/" + config.SRVR_UUID, 'utf-8');
+            var decryptedData = decrypt(encryptedData, DECRYPTION_KEY);
+            return JSON.parse(decryptedData);
+        } else {
+            return JSON.parse(fs.readFileSync(process.cwd() + "/" + config.SRVR_UUID));
+        }
     } else {
         return {};
     }
@@ -184,9 +221,13 @@ function savePublicKey(key) {
         PUBKEY: key
     }
     ExistingList[SERVER_ENTRY] = data;
-    var decryptedData = JSON.stringify(ExistingList);
-    var encryptedData = encrypt(decryptedData, DECRYPTION_KEY);
-    fs.writeFileSync(process.cwd() + "/" + config.SRVR_UUID, encryptedData);
+    if (ENCRYPT_DATA) {
+        var decryptedData = JSON.stringify(ExistingList);
+        var encryptedData = encrypt(decryptedData, DECRYPTION_KEY);
+        fs.writeFileSync(process.cwd() + "/" + config.SRVR_UUID, encryptedData);
+    } else {
+        fs.writeFileSync(process.cwd() + "/" + config.SRVR_UUID, ExistingList);
+    }
 }
 
 function saveUUID(uuid) {
@@ -197,29 +238,19 @@ function saveUUID(uuid) {
         PUBKEY: null
     }
     ExistingList[SERVER_ENTRY] = data;
-    var decryptedData = JSON.stringify(ExistingList);
-    var encryptedData = encrypt(decryptedData, DECRYPTION_KEY);
-    fs.writeFileSync(process.cwd() + "/" + config.SRVR_UUID, encryptedData);
-}
-
-function ExitProgram(message = "exit") {
-    console.log(chalk.yellowBright(message))
-    RequestServerDisconnect()
-    process.exit()
-}
-
-function ProgramError(ErrorName, ErrorMessage) {
-    console.log(`${chalk.redBright("[" + ErrorName + "]")} ${chalk.whiteBright(ErrorMessage)}`);
-    ExitProgram();
+    if (ENCRYPT_DATA) {
+        var decryptedData = JSON.stringify(ExistingList);
+        var encryptedData = encrypt(decryptedData, DECRYPTION_KEY);
+        fs.writeFileSync(process.cwd() + "/" + config.SRVR_UUID, encryptedData);
+    } else {
+        fs.writeFileSync(process.cwd() + "/" + config.SRVR_UUID, ExistingList);
+    }
 }
 
 if (!fs.existsSync('./data/')) {
     fs.mkdirSync('./data/')
 }
 
-if (!fs.existsSync('./config.js')) {
-    ProgramError("MISSING_CONFIG_FILE", "Missing config file: this is needed for this program to function")
-}
 
 config.C2CC_ID = config.C2CC_ID.trim()
 function cleanStr(c) {
@@ -318,19 +349,40 @@ const FRIENDS_LIST_FILE = config.FRIENDS_LIST;
 
 function loadFriendList() {
     if (!fs.existsSync(FRIENDS_LIST_FILE)) {
-        fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, "[]");
+        if (ENCRYPT_DATA) {
+            var DecryptedData = [];
+            var EncryptedData = encrypt(JSON.stringify(DecryptedData), DECRYPTION_KEY);
+            fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, EncryptedData);
+        } else {
+            fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, "[]");
+        }
     }
-    return JSON.parse(fs.readFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, 'utf-8'))
+    if (ENCRYPT_DATA) {
+        var EncryptedData = fs.readFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, 'utf-8');
+        var DecryptedData = decrypt(EncryptedData,  DECRYPTION_KEY)
+        return JSON.parse(DecryptedData)
+    } else {
+        return JSON.parse(fs.readFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, 'utf-8'))
+    }
 }
 
 function addFriend(friendID) {
+    if (!isAppropriatePeerID(friendID)) {
+        console.log(chalk.redBright('Add Friend: error: ') + "failed check isAppropriatePeerID()");
+        return;
+    }
     if (friendID == null || friendID == undefined) {
         console.log(chalk.redBright('Add Friend: error: ') + "Unspecified friendID");
         return;
     }
     var friendslist = loadFriendList();
     friendslist.push(friendID);
-    fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, JSON.stringify(friendslist));
+    if (ENCRYPT_DATA) {
+        var DecryptedData = JSON.stringify(friendslist);
+        fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, encrypt(DecryptedData, DECRYPTION_KEY))
+    } else {
+        fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, JSON.stringify(friendslist));
+    }
     console.log(chalk.greenBright(`Friend with ID '${friendID}' added successfully!`));
 }
 
@@ -346,7 +398,15 @@ function removeArrayItem(arr, value) {
     return arr;
 }
 
+function getFriendsList() { // Alias for loadFriendList();
+    return loadFriendList();
+}
+
 function removeFriend(friendID) {
+    if (!isAppropriatePeerID(friendID)) {
+        console.log(chalk.redBright('Add Friend: error: ') + "failed check isAppropriatePeerID()");
+        return;
+    }
     if (friendID == null || friendID == undefined) {
         console.log(chalk.redBright('Remove Friend: error: ') + "Unspecified friendID");
         return;
@@ -358,7 +418,12 @@ function removeFriend(friendID) {
         console.log(`That person ('${friendID}') is not in your friends list!`)
         return;
     }
-    fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, JSON.stringify(friendslist));
+    if (ENCRYPT_DATA) {
+        var DecryptedData = JSON.stringify(friendslist);
+        fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, encrypt(DecryptedData, DECRYPTION_KEY))
+    } else {
+        fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, JSON.stringify(friendslist));
+    }
     console.log(chalk.greenBright(`Friend with ID '${friendID}' removed successfully!`));
 }
 
@@ -434,12 +499,15 @@ function parser(Command = "", Args = []) {
 
 async function input(prompt) {
     process.stdout.write(prompt);
-    rl.setPrompt(prompt)
+    rl.setPrompt(prompt);
     return (await rl[Symbol.asyncIterator]().next()).value;
 }
 
-async function prompt() {
-    var UserInput = await input(`${chalk.greenBright(`[${HOSTNAME}/${PEER}]`)}: `);
+async function prompt(inputMessage = `${chalk.greenBright(`[${HOSTNAME}/${PEER}]`)}: `) {
+    if (TALKING_TO_PEER) {
+        inputMessage = "chat:" + PEER_SERVER_ID + "> ";
+    }
+    var UserInput = await input(inputMessage);
     if (UserInput === null || UserInput === undefined) { 
         ExitProgram();
     }
@@ -500,7 +568,7 @@ function setupChecks() {
     }
 }
 
-//console.clear();
+console.clear();
 setupChecks()
 console.log(`Establishing connection with '${SERVER_DETAILS.IP}:${SERVER_DETAILS.PORT}'...`);
 //console.log(Version)
@@ -520,7 +588,6 @@ const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
 }); 
 
 const io = require("socket.io-client");
-const { clear } = require('console');
 const socket = io(`${SERVER_DETAILS.IP}:${SERVER_DETAILS.PORT}`, {
     timeout: 10000,
     query: "userid=" + config.C2CC_ID
@@ -624,9 +691,10 @@ socket.on('peer_conn_res', function(Encdata) {
         PEER = PEER_SERVER_ID;
         console.log(chalk.greenBright("\nConnected to " + PEER_SERVER_ID));
         console.log(chalk.magentaBright("\nYou are in chat mode. Anything you send will be interpreted as a message and will be sent to the peer.\nTo do a command, begin your command with a '"+config.CHAT_COMMAND_PREFIX+"'\nTo disconnect from the peer, do '"+config.CHAT_COMMAND_PREFIX+"disconnect'\n"))
-        prompt();
+        prompt("chat:" + PEER_SERVER_ID + "> ");
     }
 })
+
 
 socket.on('disconnect_from_user', function(Encdata) {
     const data = decryptEncryptedPacket(Encdata, privateKey);
@@ -687,7 +755,7 @@ socket.on('server_peerConn_req', async function(Encdata) {
                         PEER = user;
                         console.log(chalk.greenBright('Connected to ' + user));
                         console.log(chalk.magentaBright("\nYou are in chat mode. Anything you send will be interpreted as a message and will be sent to the peer.\nTo do a command, begin your command with a '"+config.CHAT_COMMAND_PREFIX+"'\nTo disconnect from the peer, do '"+config.CHAT_COMMAND_PREFIX+"disconnect'\n"))
-                        prompt();
+                        prompt("chat:" + PEER_SERVER_ID + "> ");
                     } else {
                         ResponseData = {
                             response: "deny",
@@ -716,8 +784,12 @@ socket.on('server_peerConn_req', async function(Encdata) {
 
 function ConnectToPeer(PeerID) {
     flags.IGNORE_CONN_RESPONSE = false;
+    if (!isAppropriatePeerID(PeerID)) {
+        console.log(chalk.redBright('ConnectToPeer: error: ') + "The PeerID failed check 'isAppropriatePeerID()'.")
+        return;
+    }
     if (flags.PEER_CONN_REQ_SENT) {
-        console.log(chalk.redBright('ConnectToPeer: error ') + "You are already trying to connect to someone.");
+        console.log(chalk.redBright('ConnectToPeer: error: ') + "You are already trying to connect to someone.");
         prompt();
         return;
     }
@@ -756,6 +828,28 @@ function ConnectToPeer(PeerID) {
     //prompt();
 }
 
+socket.on('_sentMessage_', function(EncryptedData) {
+    if (TALKING_TO_PEER) {
+        const ServerToClient = decryptEncryptedPacket(EncryptedData, privateKey);
+        const ClientToClient = decryptEncryptedPacket(ServerToClient, privateKey);
+        if (PEER_SERVER_ID == ClientToClient.PeerID) {
+            if (PEER_PUBLIC_KEY == ClientToClient.PeerPubKey) {
+                var DateObject = new Date();
+                var Obj = DateObject.getHours() + ":" + DateObject.getMinutes();
+                Obj = Obj.replace(/\b(\d{1})\b/g, '0$1')
+                console.log("\n[" + Obj + "] " + chalk.magentaBright('[Peer]: ') + ClientToClient.message);
+                prompt("chat:" + PEER_SERVER_ID + "> ");
+            } else {
+                return;
+            }
+        } else {
+            return;
+        }
+    } else {
+        return;
+    }
+});
+
 function sendMessage(message) {
     if (PEER_SERVER_ID == null) {
         ProgramError("UNKNOWN_PEER_DATA", "You are trying to send a message without a destination")
@@ -771,7 +865,22 @@ function sendMessage(message) {
     var DateObject = new Date();
     var Obj = DateObject.getHours() + ":" + DateObject.getMinutes();
     Obj = Obj.replace(/\b(\d{1})\b/g, '0$1')
-    console.log(`[${Obj}] ${chalk.blueBright('[You]')}: ${message}`)
+    console.log(`[${Obj}] ${chalk.blueBright('[You]')}: ${message}`);
+    const SendData = {
+        PeerID: config.C2CC_ID,
+        PeerPubKey: publicKey,
+        message: message
+    }
+    const ClientToClient = createEncryptedPacket(SendData, PEER_PUBLIC_KEY);
+    const ServerData = {
+        PeerID: PEER_SERVER_ID,
+        EncryptedClientData: ClientToClient
+    }
+    const ServerList = getServerList();
+    const SERVER_ENTRY = cleanStr(SERVER_DETAILS.IP + SERVER_DETAILS.PORT)
+    const PUBKEY = ServerList[SERVER_ENTRY].PUBKEY;
+    const ClientToServer = createEncryptedPacket(ServerData, PUBKEY);
+    socket.emit("SendMessageToClient", ClientToServer);
 }
 
 function requestDisconnectFromMe() {
