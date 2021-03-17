@@ -110,7 +110,6 @@ if (ENCRYPT_DATA) {
     }
 }
 
-
 const letterMap = {
     a: 0, b: 1, c: 2, d: 3, e: 4, f: 5, 
     g: 6, h: 7, i: 8, j: 9, k: 10, l: 11,
@@ -157,46 +156,76 @@ function deObfuscateStringByUUID(string, uuid) {
 var aesjs = require('aes-js');
 
 var encryptKey = function(toEncrypt, pubkey) {
-    var publicKey = pubkey;
-    var buffer = Buffer.from(toEncrypt);
-    var encrypted = crypto.publicEncrypt({key: publicKey}, buffer);
-    return encrypted.toString("base64");
+    try {
+        var publicKey = pubkey;
+        var buffer = Buffer.from(toEncrypt);
+        var encrypted = crypto.publicEncrypt({key: publicKey}, buffer);
+        return encrypted.toString("base64");
+    } catch (e) {
+        console.log(chalk.redBright("EncryptKey: error: ") + e.message);
+        return;
+    }
 };
 
 var decryptKey = function(toDecrypt, pubkey) {
-    var privateKey = pubkey;
-    var buffer = Buffer.from(toDecrypt, "base64");
-    var decrypted = crypto.privateDecrypt({key: privateKey}, buffer);
-    //return decrypted.toString("hex");
-    return Buffer.from(decrypted, "hex")
+    try {
+        var privateKey = pubkey;
+        var buffer = Buffer.from(toDecrypt, "base64");
+        var decrypted = crypto.privateDecrypt({key: privateKey}, buffer);
+        //return decrypted.toString("hex");
+        return Buffer.from(decrypted, "hex")
+    } catch (e) {
+        console.log(chalk.redBright("DecryptKey: error: ") + e.message);
+        return;
+    }
 };
 function encrypt(text, password){
-    var textBytes = aesjs.utils.utf8.toBytes(text);
-    var aesCtr = new aesjs.ModeOfOperation.ctr(password);
-    var encryptedBytes = aesCtr.encrypt(textBytes);
-    return aesjs.utils.hex.fromBytes(encryptedBytes);
+    try {
+        var textBytes = aesjs.utils.utf8.toBytes(text);
+        var aesCtr = new aesjs.ModeOfOperation.ctr(password);
+        var encryptedBytes = aesCtr.encrypt(textBytes);
+        return aesjs.utils.hex.fromBytes(encryptedBytes);
+    } catch (e) {
+        console.log(chalk.redBright("AES-Encrypt: error: ") + e.message);
+        return;
+    }
 }
 function createEncryptedPacket(packetdata, publickey) {
-    var password = crypto.randomBytes(32);
-    packetdata = JSON.stringify(packetdata)
-    const encrypted_pck_dat = encrypt(packetdata, password);
-    const packet = {
-        packetdata: encrypted_pck_dat,
-        enc_key: encryptKey(password, publickey),
+    try {
+        var password = crypto.randomBytes(32);
+        packetdata = JSON.stringify(packetdata)
+        const encrypted_pck_dat = encrypt(packetdata, password);
+        const packet = {
+            packetdata: encrypted_pck_dat,
+            enc_key: encryptKey(password, publickey),
+        }
+        return packet
+    } catch (e) {
+        console.log(chalk.redBright("CreateEncryptedPacket: error: ") + e.message);
+        return;
     }
-    return packet
 }
 function decrypt(text, password){
-    var encryptedBytes = aesjs.utils.hex.toBytes(text);
-    var aesCtr = new aesjs.ModeOfOperation.ctr(password);
-    var decryptedBytes = aesCtr.decrypt(encryptedBytes);
-    return aesjs.utils.utf8.fromBytes(decryptedBytes);
+    try {
+        var encryptedBytes = aesjs.utils.hex.toBytes(text);
+        var aesCtr = new aesjs.ModeOfOperation.ctr(password);
+        var decryptedBytes = aesCtr.decrypt(encryptedBytes);
+        return aesjs.utils.utf8.fromBytes(decryptedBytes);
+    } catch (e) {
+        console.log(chalk.redBright("AES-Decrypt: error: ") + e.message);
+        return;
+    }
 }
 function decryptEncryptedPacket(encrypted_packet, privateKey) {
-    var password = decryptKey(encrypted_packet.enc_key, privateKey)
-    //console.log(encrypted_packet.packetdata)
-    var StringObj = decrypt(encrypted_packet.packetdata, password)
-    return JSON.parse(StringObj)
+    try {
+        var password = decryptKey(encrypted_packet.enc_key, privateKey)
+        //console.log(encrypted_packet.packetdata)
+        var StringObj = decrypt(encrypted_packet.packetdata, password)
+        return JSON.parse(StringObj)
+    } catch (e) {
+        console.log(chalk.redBright("DecryptEncryptedPacket: error: ") + e.message);
+        return;
+    }
 }
 
 function getServerList() {
@@ -505,11 +534,14 @@ async function input(prompt) {
 
 async function prompt(inputMessage = `${chalk.greenBright(`[${HOSTNAME}/${PEER}]`)}: `) {
     if (TALKING_TO_PEER) {
-        inputMessage = "chat:" + PEER_SERVER_ID + "> ";
+        inputMessage = "> ";
     }
     var UserInput = await input(inputMessage);
     if (UserInput === null || UserInput === undefined) { 
         ExitProgram();
+    }
+    if (TALKING_TO_PEER) {
+        process.stdout.write("\r   \r");
     }
     UserInput = UserInput.trim();
     if (UserInput == "") return prompt();
@@ -588,6 +620,7 @@ const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
 }); 
 
 const io = require("socket.io-client");
+const { Client } = require('socket.io/dist/client');
 const socket = io(`${SERVER_DETAILS.IP}:${SERVER_DETAILS.PORT}`, {
     timeout: 10000,
     query: "userid=" + config.C2CC_ID
@@ -600,7 +633,9 @@ var flags = {
     PEER_ACCEPT_VERIF_STRING: null,
     IGNORE_CONN_RESPONSE: false,
     PEER_CONN_REQ_IN_PROGRESS: false,
-    PEER_CONN_REQ_SENT: false
+    PEER_CONN_REQ_SENT: false,
+    MSG_SENT_VERIF_STRING: null,
+    MSG_SEND_TIMEOUT: null
 }
 
 
@@ -705,17 +740,17 @@ socket.on('disconnect_from_user', function(Encdata) {
         PEER = "none";
         console.log(chalk.redBright('Disconnected from ' + data.PeerID));
         prompt();
+    } else {
+        return;
     }
 })
 
-socket.on('server_peerConn_req', async function(Encdata) {
+socket.on('server_peerConn_req', async function(data) {
     if (flags.PEER_CONN_REQ_IN_PROGRESS) {
         return;
     }
     flags.PEER_CONN_REQ_IN_PROGRESS = true;
-    const data = decryptEncryptedPacket(Encdata, privateKey);
     const user = data.userID;
-    const pubkey = data.pubKey;
     const FriendsList = loadFriendList();
     const HandlingMethod = config.PEER_CONN_HANDLING;
     const ServerList = getServerList();
@@ -749,6 +784,8 @@ socket.on('server_peerConn_req', async function(Encdata) {
                 }
                 if (Input.trim().toLowerCase() == "y") {
                     if (AcceptInput) {
+                        const data = decryptEncryptedPacket(data.encData, privateKey);
+                        const pubkey = data.pubKey;
                         TALKING_TO_PEER = true;
                         PEER_SERVER_ID = user;
                         PEER_PUBLIC_KEY = pubkey;
@@ -828,17 +865,48 @@ function ConnectToPeer(PeerID) {
     //prompt();
 }
 
-socket.on('_sentMessage_', function(EncryptedData) {
+socket.on('_sentMessage_', function(messageData) {
     if (TALKING_TO_PEER) {
-        const ServerToClient = decryptEncryptedPacket(EncryptedData, privateKey);
-        const ClientToClient = decryptEncryptedPacket(ServerToClient, privateKey);
-        if (PEER_SERVER_ID == ClientToClient.PeerID) {
-            if (PEER_PUBLIC_KEY == ClientToClient.PeerPubKey) {
-                var DateObject = new Date();
-                var Obj = DateObject.getHours() + ":" + DateObject.getMinutes();
-                Obj = Obj.replace(/\b(\d{1})\b/g, '0$1')
-                console.log("\n[" + Obj + "] " + chalk.magentaBright('[Peer]: ') + ClientToClient.message);
-                prompt("chat:" + PEER_SERVER_ID + "> ");
+        if (PEER_SERVER_ID == messageData.PeerID) {
+            if (PEER_PUBLIC_KEY == messageData.PeerPubKey) {
+                const ServerToClient = decryptEncryptedPacket(messageData.encrypted, privateKey);
+                const ClientToClient = decryptEncryptedPacket(ServerToClient, privateKey);
+                if (ClientToClient.PeerID !== messageData.PeerID || ClientToClient.PeerPubKey !== messageData.PeerPubKey) {
+                    return;
+                }
+                if (ClientToClient.PacketType == "MESSAGE") {
+                    const ReSendData = {
+                        PeerID: config.C2CC_ID,
+                        PeerPubKey: publicKey,
+                        PacketType: "VERIF_ACKNOWLEDGEMENT",
+                        PacketContents: ClientToClient.Acknowledgement,
+                        Acknowledgement: ""
+                    }
+                    const ClientToClient2 = createEncryptedPacket(ReSendData, PEER_PUBLIC_KEY);
+                    const ServerData = {
+                        PeerID: PEER_SERVER_ID,
+                        EncryptedClientData: ClientToClient2
+                    }
+                    const ServerList = getServerList();
+                    const SERVER_ENTRY = cleanStr(SERVER_DETAILS.IP + SERVER_DETAILS.PORT)
+                    const PUBKEY = ServerList[SERVER_ENTRY].PUBKEY;
+                    const ClientToServer = createEncryptedPacket(ServerData, PUBKEY);
+                    socket.emit("SendMessageToClient", ClientToServer);
+                    var DateObject = new Date();
+                    var Obj = DateObject.getHours() + ":" + DateObject.getMinutes();
+                    Obj = Obj.replace(/\b(\d{1})\b/g, '0$1')
+                    console.log("\n[" + Obj + "] " + chalk.magentaBright('['+PEER_SERVER_ID+']: ') + ClientToClient.PacketContents);
+                    prompt("chat:" + PEER_SERVER_ID + "> ");
+                } else if (ClientToClient.PacketType == "VERIF_ACKNOWLEDGEMENT") {
+                    const ReturnedVerifString = ClientToClient.PacketContents;
+                    if (ReturnedVerifString == flags.MSG_SENT_VERIF_STRING) {
+                        clearTimeout(flags.MSG_SEND_TIMEOUT);
+                    } else {
+                        console.log(chalk.yellowBright("ReadSentPacketData: warning: " + "Inconsistent data - someone may have tampered with the data."))
+                    }
+                } else {
+                    return;
+                }
             } else {
                 return;
             }
@@ -866,10 +934,14 @@ function sendMessage(message) {
     var Obj = DateObject.getHours() + ":" + DateObject.getMinutes();
     Obj = Obj.replace(/\b(\d{1})\b/g, '0$1')
     console.log(`[${Obj}] ${chalk.blueBright('[You]')}: ${message}`);
+    const Ack = randomWords({min: 3, max: 10, join: ' '});
+    flags.MSG_SENT_VERIF_STRING = Ack;
     const SendData = {
         PeerID: config.C2CC_ID,
         PeerPubKey: publicKey,
-        message: message
+        PacketType: "MESSAGE",
+        PacketContents: message,
+        Acknowledgement: Ack
     }
     const ClientToClient = createEncryptedPacket(SendData, PEER_PUBLIC_KEY);
     const ServerData = {
@@ -880,6 +952,10 @@ function sendMessage(message) {
     const SERVER_ENTRY = cleanStr(SERVER_DETAILS.IP + SERVER_DETAILS.PORT)
     const PUBKEY = ServerList[SERVER_ENTRY].PUBKEY;
     const ClientToServer = createEncryptedPacket(ServerData, PUBKEY);
+    flags.MSG_SEND_TIMEOUT = setTimeout(function() {
+        console.log(chalk.redBright("SendMessage: error: ") + "It seems like your message didn't go through");
+        prompt();
+    }, 8000)
     socket.emit("SendMessageToClient", ClientToServer);
 }
 

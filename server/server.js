@@ -118,7 +118,7 @@ try {
             UUID: uuid
         }
         list[socketID] = obj;
-        fs.writeFileSync('./users.json', JSON.stringify(list))
+        fs.writeFileSync('./users.json', JSON.stringify(list, null, 2))
     }
 
     function userExists(socketID) {
@@ -254,7 +254,7 @@ try {
             }
             const PeerPubKey = SocketInformation[PeerID].publicKey;
             const PeerSocket = SocketInformation[PeerID].socketObject;
-            log("INFO", "Recieved a ConnectionRequest packet from " + SocketID + " wishing to connect to " + PeerID);
+            //log("INFO", "Recieved a ConnectionRequest packet from " + SocketID + " wishing to connect to " + PeerID);
             /*const sendData = {
                 acc: false,
                 reason: "Test",
@@ -263,11 +263,15 @@ try {
             }
             var encryptedData = createEncryptedPacket(sendData, SocketInformation[SocketID].publicKey);
             socket.emit("peer_conn_res", encryptedData)*/
-            const SendData = {
-                userID: SocketID,
+            const ConnectionParameters = {
                 pubKey: MainPubKey
             }
-            PeerSocket.emit("server_peerConn_req", createEncryptedPacket(SendData, PeerPubKey));
+
+            const SendData = {
+                userID: SocketID,
+                encData: createEncryptedPacket(ConnectionParameters, PeerPubKey)
+            }
+            PeerSocket.emit("server_peerConn_req", SendData);
             var IgnoreResponse = false;
             const ResponseNotRecievedTimeout = setTimeout(function(){
                 if (!isOnline(PeerID)) {
@@ -350,6 +354,11 @@ try {
            const PeerID = Decrypted.PeerID;
            const PeerSocketObject = SocketInformation[PeerID].socketObject;
            const PeerSocketPubKey = SocketInformation[PeerID].publicKey;
+           const mdata = {
+               encrypted: ToSendToClient,
+               PeerID: PeerID,
+               PeerPubKey: PeerSocketPubKey
+           }
            PeerSocketObject.emit('_sentMessage_', createEncryptedPacket(ToSendToClient, PeerSocketPubKey));
         })
 

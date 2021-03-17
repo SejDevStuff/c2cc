@@ -1,0 +1,15 @@
+#!/bin/bash
+mkdir -p out/client
+mkdir -p out/server
+
+cp client/config.js out/client
+cp server/config.js out/server
+
+pkg client/index.js --options no-warnings --targets node14-linux-x64 --output out/client/c2cc-linux
+pkg client/index.js --options no-warnings --targets node14-win-x64 --output out/client/c2cc-win.exe
+pkg client/index.js --options no-warnings --targets node14-macos-x64 --output out/client/c2cc-macos
+
+pkg server/server.js --options no-warnings --targets node14-linux-x64 --output out/server/c2cc-server-linux
+pkg server/server.js --options no-warnings --targets node14-win-x64 --output out/server/c2cc-server-win.exe
+pkg server/server.js --options no-warnings --targets node14-macos-x64 --output out/server/c2cc-server-macos
+

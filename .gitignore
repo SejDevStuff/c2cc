@@ -14,5 +14,6 @@ users.json
 # This is the other client which I use to test features
 client_2/
 
-# my todo list
+# other
+out/
 todo.txt
