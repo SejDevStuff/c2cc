@@ -352,14 +352,16 @@ try {
            const Decrypted = decryptEncryptedPacket(data, privateKey);
            const ToSendToClient = Decrypted.EncryptedClientData;
            const PeerID = Decrypted.PeerID;
+           const SocketID = Decrypted.MyID;
+           const SockPubKey = SocketInformation[SocketID].publicKey;
            const PeerSocketObject = SocketInformation[PeerID].socketObject;
            const PeerSocketPubKey = SocketInformation[PeerID].publicKey;
            const mdata = {
                encrypted: ToSendToClient,
-               PeerID: PeerID,
-               PeerPubKey: PeerSocketPubKey
+               PeerID: SocketID,
+               PeerPubKey: SockPubKey
            }
-           PeerSocketObject.emit('_sentMessage_', createEncryptedPacket(ToSendToClient, PeerSocketPubKey));
+           PeerSocketObject.emit('_sentMessage_', createEncryptedPacket(mdata, PeerSocketPubKey));
         })
 
         socket.on('socket_provide_data', function(data) {

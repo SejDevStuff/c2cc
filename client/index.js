@@ -20,7 +20,7 @@ function ExitProgram(message = "exit") {
 }
 
 function ProgramError(ErrorName, ErrorMessage) {
-    console.log(`${chalk.redBright("[" + ErrorName + "]")} ${chalk.whiteBright(ErrorMessage)}`);
+    console.log(`Uh oh! ${chalk.redBright("" + ErrorName + "")} => ${chalk.whiteBright(ErrorMessage)}`);
     ExitProgram("Program exited on error.");
 }
 
@@ -29,6 +29,16 @@ if (!fs.existsSync('./config.js')) {
 }
 var config = require('./config');
 var ENCRYPT_DATA = config.ENCRYPT_DATA;
+
+config.DATA_DIR = process.cwd() + config.DATA_DIR;
+
+if (!fs.existsSync(config.DATA_DIR)) {
+    fs.mkdirSync(config.DATA_DIR);
+}
+
+config.SRVR_UUID = config.DATA_DIR + "/" + config.SRVR_UUID;
+config.FRIENDS_LIST = config.DATA_DIR + "/" + config.FRIENDS_LIST;
+config.MASTER_HASH_LOC = config.DATA_DIR + "/" + config.MASTER_HASH_LOC;
 
 function isAppropriatePeerID(providedID) {
     if (providedID == config.C2CC_ID) {
@@ -50,8 +60,8 @@ function hashString(data) {
     return crypto.createHash("sha512").update(data, "binary").digest("base64");
 }
 if (ENCRYPT_DATA) {
-    if (!fs.existsSync(process.cwd()+config.MASTER_HASH_LOC)) {
-        var KeyInput = promptsync("Create a master key to encrypt and decrypt your server data: ", {echo: "*"});
+    if (!fs.existsSync(config.MASTER_HASH_LOC)) {
+        var KeyInput = promptsync("Create a password to encrypt and decrypt your data: ", {echo: "*"});
         if (KeyInput === undefined || KeyInput === null) {
             console.log("Malformed input. Exiting...");
             process.exit();
@@ -62,7 +72,7 @@ if (ENCRYPT_DATA) {
             process.exit();
         }
         InputHash = hashString(KeyInput);
-        fs.writeFileSync(process.cwd() + config.MASTER_HASH_LOC, InputHash);
+        fs.writeFileSync(config.MASTER_HASH_LOC, InputHash);
         InputBuffer = Buffer.from(KeyInput, 'utf-8');
         if (InputBuffer.length < 32) {
             var PaddingBufferLength = 32 - InputBuffer.length;
@@ -77,7 +87,7 @@ if (ENCRYPT_DATA) {
         }
         //DECRYPTION_KEY = Buffer.from(input, 'utf-8');
     } else {
-        var KeyInput = promptsync("Enter server master key: ", {echo: "*"});
+        var KeyInput = promptsync("Enter password: ", {echo: "*"});
         if (KeyInput === undefined || KeyInput === null) {
             console.log("Malformed input. Exiting...");
             process.exit();
@@ -88,7 +98,7 @@ if (ENCRYPT_DATA) {
             process.exit();
         }
         InputHash = hashString(KeyInput);
-        const CorrectInputHash = fs.readFileSync(process.cwd() + config.MASTER_HASH_LOC, 'utf-8');
+        const CorrectInputHash = fs.readFileSync(config.MASTER_HASH_LOC, 'utf-8');
         if (CorrectInputHash == InputHash) {
             console.log("Key correct!");
             InputBuffer = Buffer.from(KeyInput, 'utf-8');
@@ -229,13 +239,13 @@ function decryptEncryptedPacket(encrypted_packet, privateKey) {
 }
 
 function getServerList() {
-    if (fs.existsSync(process.cwd() + "/" + config.SRVR_UUID)) {
+    if (fs.existsSync(config.SRVR_UUID)) {
         if (ENCRYPT_DATA) {
-            var encryptedData = fs.readFileSync(process.cwd() + "/" + config.SRVR_UUID, 'utf-8');
+            var encryptedData = fs.readFileSync(config.SRVR_UUID, 'utf-8');
             var decryptedData = decrypt(encryptedData, DECRYPTION_KEY);
             return JSON.parse(decryptedData);
         } else {
-            return JSON.parse(fs.readFileSync(process.cwd() + "/" + config.SRVR_UUID));
+            return JSON.parse(fs.readFileSync(config.SRVR_UUID));
         }
     } else {
         return {};
@@ -253,9 +263,9 @@ function savePublicKey(key) {
     if (ENCRYPT_DATA) {
         var decryptedData = JSON.stringify(ExistingList);
         var encryptedData = encrypt(decryptedData, DECRYPTION_KEY);
-        fs.writeFileSync(process.cwd() + "/" + config.SRVR_UUID, encryptedData);
+        fs.writeFileSync(config.SRVR_UUID, encryptedData);
     } else {
-        fs.writeFileSync(process.cwd() + "/" + config.SRVR_UUID, ExistingList);
+        fs.writeFileSync(config.SRVR_UUID, ExistingList);
     }
 }
 
@@ -270,16 +280,11 @@ function saveUUID(uuid) {
     if (ENCRYPT_DATA) {
         var decryptedData = JSON.stringify(ExistingList);
         var encryptedData = encrypt(decryptedData, DECRYPTION_KEY);
-        fs.writeFileSync(process.cwd() + "/" + config.SRVR_UUID, encryptedData);
+        fs.writeFileSync(config.SRVR_UUID, encryptedData);
     } else {
-        fs.writeFileSync(process.cwd() + "/" + config.SRVR_UUID, ExistingList);
+        fs.writeFileSync(config.SRVR_UUID, ExistingList);
     }
 }
-
-if (!fs.existsSync('./data/')) {
-    fs.mkdirSync('./data/')
-}
-
 
 config.C2CC_ID = config.C2CC_ID.trim()
 function cleanStr(c) {
@@ -381,17 +386,17 @@ function loadFriendList() {
         if (ENCRYPT_DATA) {
             var DecryptedData = [];
             var EncryptedData = encrypt(JSON.stringify(DecryptedData), DECRYPTION_KEY);
-            fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, EncryptedData);
+            fs.writeFileSync(FRIENDS_LIST_FILE, EncryptedData);
         } else {
-            fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, "[]");
+            fs.writeFileSync(FRIENDS_LIST_FILE, "[]");
         }
     }
     if (ENCRYPT_DATA) {
-        var EncryptedData = fs.readFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, 'utf-8');
+        var EncryptedData = fs.readFileSync(FRIENDS_LIST_FILE, 'utf-8');
         var DecryptedData = decrypt(EncryptedData,  DECRYPTION_KEY)
         return JSON.parse(DecryptedData)
     } else {
-        return JSON.parse(fs.readFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, 'utf-8'))
+        return JSON.parse(fs.readFileSync(FRIENDS_LIST_FILE, 'utf-8'))
     }
 }
 
@@ -408,9 +413,9 @@ function addFriend(friendID) {
     friendslist.push(friendID);
     if (ENCRYPT_DATA) {
         var DecryptedData = JSON.stringify(friendslist);
-        fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, encrypt(DecryptedData, DECRYPTION_KEY))
+        fs.writeFileSync(FRIENDS_LIST_FILE, encrypt(DecryptedData, DECRYPTION_KEY))
     } else {
-        fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, JSON.stringify(friendslist));
+        fs.writeFileSync(FRIENDS_LIST_FILE, JSON.stringify(friendslist));
     }
     console.log(chalk.greenBright(`Friend with ID '${friendID}' added successfully!`));
 }
@@ -433,7 +438,7 @@ function getFriendsList() { // Alias for loadFriendList();
 
 function removeFriend(friendID) {
     if (!isAppropriatePeerID(friendID)) {
-        console.log(chalk.redBright('Add Friend: error: ') + "failed check isAppropriatePeerID()");
+        console.log(chalk.redBright('Remove Friend: error: ') + "failed check isAppropriatePeerID()");
         return;
     }
     if (friendID == null || friendID == undefined) {
@@ -449,9 +454,9 @@ function removeFriend(friendID) {
     }
     if (ENCRYPT_DATA) {
         var DecryptedData = JSON.stringify(friendslist);
-        fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, encrypt(DecryptedData, DECRYPTION_KEY))
+        fs.writeFileSync(FRIENDS_LIST_FILE, encrypt(DecryptedData, DECRYPTION_KEY))
     } else {
-        fs.writeFileSync(process.cwd() + "/" + FRIENDS_LIST_FILE, JSON.stringify(friendslist));
+        fs.writeFileSync(FRIENDS_LIST_FILE, JSON.stringify(friendslist));
     }
     console.log(chalk.greenBright(`Friend with ID '${friendID}' removed successfully!`));
 }
@@ -535,6 +540,19 @@ async function input(prompt) {
 async function prompt(inputMessage = `${chalk.greenBright(`[${HOSTNAME}/${PEER}]`)}: `) {
     if (TALKING_TO_PEER) {
         inputMessage = "> ";
+    }
+    if (flags.RETURN_TO_PROMPT == false) {
+        function checkFlag() {
+            if(flags.RETURN_TO_PROMPT == false) {
+                inputMessage = "";
+                setTimeout(checkFlag, 100); /* this checks the flag every 100 milliseconds*/
+            } else {
+                inputMessage = "> "
+                return;
+            }
+        }
+        inputMessage = "";
+        checkFlag();
     }
     var UserInput = await input(inputMessage);
     if (UserInput === null || UserInput === undefined) { 
@@ -620,7 +638,6 @@ const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
 }); 
 
 const io = require("socket.io-client");
-const { Client } = require('socket.io/dist/client');
 const socket = io(`${SERVER_DETAILS.IP}:${SERVER_DETAILS.PORT}`, {
     timeout: 10000,
     query: "userid=" + config.C2CC_ID
@@ -635,13 +652,15 @@ var flags = {
     PEER_CONN_REQ_IN_PROGRESS: false,
     PEER_CONN_REQ_SENT: false,
     MSG_SENT_VERIF_STRING: null,
-    MSG_SEND_TIMEOUT: null
+    MSG_SEND_TIMEOUT: null,
+    RETURN_TO_PROMPT: true,
+    PEER_HOSTNAME: "Unknown"
 }
 
 
 const USER_C2CC_ID = config.C2CC_ID;
 var UUID = null;
-if (fs.existsSync(process.cwd() + "/" + config.SRVR_UUID)) {
+if (fs.existsSync(config.SRVR_UUID)) {
     var UUID_LIST = getServerList();
     var SERVER_ENTRY = cleanStr(SERVER_DETAILS.IP + SERVER_DETAILS.PORT)
     try {
@@ -784,8 +803,8 @@ socket.on('server_peerConn_req', async function(data) {
                 }
                 if (Input.trim().toLowerCase() == "y") {
                     if (AcceptInput) {
-                        const data = decryptEncryptedPacket(data.encData, privateKey);
-                        const pubkey = data.pubKey;
+                        const data_decrypt = decryptEncryptedPacket(data.encData, privateKey);
+                        const pubkey = data_decrypt.pubKey;
                         TALKING_TO_PEER = true;
                         PEER_SERVER_ID = user;
                         PEER_PUBLIC_KEY = pubkey;
@@ -866,15 +885,16 @@ function ConnectToPeer(PeerID) {
 }
 
 socket.on('_sentMessage_', function(messageData) {
+    messageData = decryptEncryptedPacket(messageData, privateKey)
     if (TALKING_TO_PEER) {
         if (PEER_SERVER_ID == messageData.PeerID) {
             if (PEER_PUBLIC_KEY == messageData.PeerPubKey) {
-                const ServerToClient = decryptEncryptedPacket(messageData.encrypted, privateKey);
-                const ClientToClient = decryptEncryptedPacket(ServerToClient, privateKey);
+                const ClientToClient = decryptEncryptedPacket(messageData.encrypted, privateKey);
                 if (ClientToClient.PeerID !== messageData.PeerID || ClientToClient.PeerPubKey !== messageData.PeerPubKey) {
                     return;
                 }
                 if (ClientToClient.PacketType == "MESSAGE") {
+
                     const ReSendData = {
                         PeerID: config.C2CC_ID,
                         PeerPubKey: publicKey,
@@ -885,6 +905,7 @@ socket.on('_sentMessage_', function(messageData) {
                     const ClientToClient2 = createEncryptedPacket(ReSendData, PEER_PUBLIC_KEY);
                     const ServerData = {
                         PeerID: PEER_SERVER_ID,
+                        MyID: config.C2CC_ID,
                         EncryptedClientData: ClientToClient2
                     }
                     const ServerList = getServerList();
@@ -892,15 +913,21 @@ socket.on('_sentMessage_', function(messageData) {
                     const PUBKEY = ServerList[SERVER_ENTRY].PUBKEY;
                     const ClientToServer = createEncryptedPacket(ServerData, PUBKEY);
                     socket.emit("SendMessageToClient", ClientToServer);
+
+                    flags.PEER_HOSTNAME = ClientToClient.Hostname;
+
                     var DateObject = new Date();
                     var Obj = DateObject.getHours() + ":" + DateObject.getMinutes();
                     Obj = Obj.replace(/\b(\d{1})\b/g, '0$1')
-                    console.log("\n[" + Obj + "] " + chalk.magentaBright('['+PEER_SERVER_ID+']: ') + ClientToClient.PacketContents);
+                    console.log("\n[" + Obj + "] " + chalk.magentaBright('['+flags.PEER_HOSTNAME+' ('+PEER_SERVER_ID+')]: ') + ClientToClient.PacketContents);
                     prompt("chat:" + PEER_SERVER_ID + "> ");
                 } else if (ClientToClient.PacketType == "VERIF_ACKNOWLEDGEMENT") {
                     const ReturnedVerifString = ClientToClient.PacketContents;
                     if (ReturnedVerifString == flags.MSG_SENT_VERIF_STRING) {
+                        flags.RETURN_TO_PROMPT = true;
+                        process.stdout.write(` ${chalk.greenBright('✓')}\n`)
                         clearTimeout(flags.MSG_SEND_TIMEOUT);
+                        prompt();
                     } else {
                         console.log(chalk.yellowBright("ReadSentPacketData: warning: " + "Inconsistent data - someone may have tampered with the data."))
                     }
@@ -923,7 +950,7 @@ function sendMessage(message) {
         ProgramError("UNKNOWN_PEER_DATA", "You are trying to send a message without a destination")
     }
     if (SERVER_DETAILS.IP == null || SERVER_DETAILS.PORT == null) {
-        ProgramError("UNKNOWN_SERVER_DATA", "Unknown server data -> server is required to route messages to peer")
+        ProgramError("UNKNOWN_SERVER_DATA", "Unknown server data - server is required to route messages to peer")
     }
     const FriendsList = loadFriendList();
     if (!FriendsList.includes(PEER_SERVER_ID)) {
@@ -933,7 +960,7 @@ function sendMessage(message) {
     var DateObject = new Date();
     var Obj = DateObject.getHours() + ":" + DateObject.getMinutes();
     Obj = Obj.replace(/\b(\d{1})\b/g, '0$1')
-    console.log(`[${Obj}] ${chalk.blueBright('[You]')}: ${message}`);
+    process.stdout.write(`[${Obj}] ${chalk.blueBright('[You]')}: ${chalk.bold.whiteBright(message)} | Send status:`);
     const Ack = randomWords({min: 3, max: 10, join: ' '});
     flags.MSG_SENT_VERIF_STRING = Ack;
     const SendData = {
@@ -941,19 +968,23 @@ function sendMessage(message) {
         PeerPubKey: publicKey,
         PacketType: "MESSAGE",
         PacketContents: message,
+        Hostname: config.HOSTNAME,
         Acknowledgement: Ack
     }
     const ClientToClient = createEncryptedPacket(SendData, PEER_PUBLIC_KEY);
     const ServerData = {
         PeerID: PEER_SERVER_ID,
+        MyID: config.C2CC_ID,
         EncryptedClientData: ClientToClient
     }
     const ServerList = getServerList();
     const SERVER_ENTRY = cleanStr(SERVER_DETAILS.IP + SERVER_DETAILS.PORT)
     const PUBKEY = ServerList[SERVER_ENTRY].PUBKEY;
     const ClientToServer = createEncryptedPacket(ServerData, PUBKEY);
+    flags.RETURN_TO_PROMPT = false;
     flags.MSG_SEND_TIMEOUT = setTimeout(function() {
-        console.log(chalk.redBright("SendMessage: error: ") + "It seems like your message didn't go through");
+        console.log(chalk.redBright(" x\nSendMessage: error: ") + "It seems like your message didn't go through");
+        flags.RETURN_TO_PROMPT = true;
         prompt();
     }, 8000)
     socket.emit("SendMessageToClient", ClientToServer);

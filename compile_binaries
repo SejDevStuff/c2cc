@@ -1,4 +1,7 @@
 #!/bin/bash
+rm -rf out/
+mkdir -p out/
+
 mkdir -p out/client
 mkdir -p out/server
 

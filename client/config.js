@@ -24,21 +24,29 @@ module.exports.SERVER_ADDR = "localhost";
 */
 module.exports.C2CC_ID = "SejIsEpic";
 
+/*
+    Data directory.
+    Where the program stores your data.
+    If it exists, the program must have permissions to access it.
+    If it doesn't exist, the program will create it.
+    This is where your server, friends and other data goes.
+*/
+module.exports.DATA_DIR = "/data/";
 
 /*
     The name of your local friends list file
 */
-module.exports.FRIENDS_LIST = "data/friends.dat"
+module.exports.FRIENDS_LIST = "friends.dat"
 
 /*
     Location of server uuid file
 */
-module.exports.SRVR_UUID = "data/servers.dat"
+module.exports.SRVR_UUID = "servers.dat"
 
 /*
     Location of Master Server Key Hash
 */
-module.exports.MASTER_HASH_LOC = "/data/master_hash.dat"
+module.exports.MASTER_HASH_LOC = "master_hash.dat"
 
 /*
     How to handle peer connection requests
