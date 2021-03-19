@@ -14,6 +14,12 @@ var sockets = [];
 var socketNames = {};
 var SocketInformation = {};
 var ConnectionSockets = [];
+var BadActions = {};
+var Banlist = {};
+if (fs.existsSync("./banlist.json")) {
+    Banlist = JSON.parse(fs.readFileSync("./banlist.json", 'utf-8'));
+}
+
 try {
     function log(reason, message) {
         if (reason == "CONNECT") {
@@ -105,6 +111,122 @@ try {
         return crypto.createHash("sha512").update(data, "binary").digest("base64");
     }
 
+    function isNullOrUndefined(value) {
+        if (value === null || value === undefined) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    function ConstructUntilString(time_ms = 0) {
+        var remainingTime = time_ms - new Date().getTime();
+        var TimeObject = {
+            days: "?",
+            hours: "?",
+            minutes: "?"
+        }
+        if (!isNaN(remainingTime)) {
+            if (remainingTime <= 0) {
+                TimeObject.days = 0;
+                TimeObject.hours = 0;
+                TimeObject.minutes = 0;
+            } else {
+                var Days = Math.floor(remainingTime / 86400000)
+                var Hours = Math.floor((remainingTime - (Days * 86400000)) / 3600000);
+                var Minutes = Math.floor((remainingTime - (Hours * 3600000) - (Days * 86400000)) / 60000)
+                TimeObject.days = Days;
+                TimeObject.hours = Hours;
+                TimeObject.minutes = Minutes;
+            }
+        }
+        return TimeObject.days + " day(s) " + TimeObject.hours + " hour(s) " + TimeObject.minutes + " minute(s)";
+    }
+
+    function banSocket(socket, reason = "Reason not specified", duration = new Date().getTime() + 315576000000000, clientBan = false) {
+        if (Config.AUTO_BAN == false && clientBan == false) {
+            return;
+        }
+        const ip = socket.request.connection.remoteAddress;
+        const IPHash = hashString(ip);
+        const BannedInformation = {
+            Banned: true,
+            BannedFor: reason,
+            BannedUntil: Number(duration)
+        }
+        Banlist[IPHash] = BannedInformation;
+        fs.writeFileSync("./banlist.json", JSON.stringify(Banlist, null, 2));
+        const IsBannedObject = {
+            reason: reason,
+            until: Number(duration)
+        }
+        var UntilString = ConstructUntilString(IsBannedObject.until);
+        UntilString = UntilString.replace(/\b(\d{1})\b/g, '0$1')
+        socket.emit("server_warning", "You are banned from the server!{NEWLINE}Banned for: " + IsBannedObject.reason + "{NEWLINE}Banned until: " + UntilString);
+        socket.disconnect();
+    }
+
+    function isBanned(socket) {
+        var ReturnData = {
+            banned: true,
+            reason: "[Server Error] Unable to get banlist information",
+            until: new Date().getTime() + 315576000000000
+        }
+        const ip = socket.request.connection.remoteAddress;
+        const IPHash = hashString(ip);
+        if (isNullOrUndefined(Banlist[IPHash]) || isNullOrUndefined(Banlist[IPHash].BannedUntil) == true || isNullOrUndefined(Banlist[IPHash].BannedFor) == true || isNullOrUndefined(Banlist[IPHash].Banned) == true) {
+            ReturnData.banned = false;
+            ReturnData.reason = "Not banned";
+            ReturnData.until = 0;
+        } else {
+            var NowDate = new Date().getTime();
+            if (Banlist[IPHash].BannedUntil <= NowDate) {
+                ReturnData.banned = false;
+                ReturnData.reason = "Not banned";
+                ReturnData.until = 0;
+            } else {
+                ReturnData.reason = Banlist[IPHash].BannedFor;
+                ReturnData.until = Banlist[IPHash].BannedUntil;
+            }
+        }
+        return ReturnData;
+    }
+
+    function logBadAction(socket) {
+        if (BadActions[socket] === undefined || BadActions[socket] === null) {
+            const actions = {
+                offences: 0,
+                last_committed_offence: new Date().getTime()
+            };
+            BadActions[socket] = actions;
+        } else {
+            var OldOffences = BadActions[socket].offences;
+            const actions = {
+                offences: Number(OldOffences + 1),
+                last_committed_offence: new Date().getTime()
+            }
+            BadActions[socket] = actions;
+        }
+        if (BadActions[socket].offences >= Config.MAL_REQ_THRESHOLD) {
+            banSocket(socket, "[Autoban] Exceeded offences threshold", new Date().getTime() + Config.MAL_REQ_BAN_DURATION);
+        }
+    }
+    function getOffences(socket) {
+        if (BadActions[socket] === undefined || BadActions[socket] === null) {
+            return 0;
+        } else {
+            return BadActions[socket].offences;
+        }
+    }
+    function getLastCommittedOffenceTime(socket) {
+        if (BadActions[socket] === undefined || BadActions[socket] === null) {
+            return 0;
+        } else {
+            return BadActions[socket].last_committed_offence;
+        }
+    }
+
+
     function loadUserlist() {
         if (!fs.existsSync('./users.json')) {
             fs.writeFileSync('./users.json', "{}")
@@ -194,9 +316,20 @@ try {
     }
 
     var DONT_UNREGISTER = false;
+    var DONT_LOG = false;
 
     io.on('connection', function (socket){
+        const IsBannedObject = isBanned(socket);
+        if (IsBannedObject.banned == true) {
+            var UntilString = ConstructUntilString(IsBannedObject.until);
+            UntilString = UntilString.replace(/\b(\d{1})\b/g, '0$1')
+            socket.emit("server_warning", "You are banned from the server!{NEWLINE}Reason: " + IsBannedObject.reason + "{NEWLINE}Banned for: " + UntilString);
+            socket.disconnect();
+            return;
+        }
+
         log("CONNECT", `${socket.handshake.query['userid']} has connected.`)
+
         CURRENT_CONNECTIONS = CURRENT_CONNECTIONS + 1;
         UpdateStatusMessage();
         if (CURRENT_CONNECTIONS > MAX_CONNECTIONS) {
@@ -206,10 +339,12 @@ try {
             UpdateStatusMessage();
         }
         socket.on('disconnect', function() {
-            if (nullUndefinedCheck(socketNames[socket.id])) {
-                log("DISCONNECT", `A user has disconnected.`)
-            } else {
-                log("DISCONNECT", `${socketNames[socket.id].name} has disconnected.`)
+            if (DONT_LOG == false) {
+                if (nullUndefinedCheck(socketNames[socket.id])) {
+                    log("DISCONNECT", `A user has disconnected.`)
+                } else {
+                    log("DISCONNECT", `${socketNames[socket.id].name} has disconnected.`)
+                }
             }
             CURRENT_CONNECTIONS = CURRENT_CONNECTIONS - 1;
             // UNREGISTER THE SOCKET
@@ -220,22 +355,30 @@ try {
         });
 
         socket.on('req_discon_from_me', function(data) {
-            var decryptedData = decryptEncryptedPacket(data, privateKey);
-            const PeerID = decryptedData.PeerID;
-            const SocketID = decryptedData.MyID;
-            if (!isOnline(PeerID)) {
+            try {
+                var decryptedData = decryptEncryptedPacket(data, privateKey);
+                const PeerID = decryptedData.PeerID;
+                const SocketID = decryptedData.MyID;
+                if (!isOnline(PeerID)) {
+                    return;
+                }
+                const PeerSocket = SocketInformation[PeerID].socketObject;
+                const SendData = {
+                    PeerID: SocketID
+                }
+                log("INFO", "Recieved a DisconnectFromMe packet from " + SocketID + " wishing to disconnect from " + PeerID);
+                PeerSocket.emit("disconnect_from_user", createEncryptedPacket(SendData, SocketInformation[PeerID].publicKey))
+            } catch (e) {
+                log("WARN", "Exception whilst running req_discon_from_me: " + e.message + ". Client has been warned")
+                socket.emit("server_warning", "Malformed request sent to server! Event: req_discon_from_me. This will be logged");
+                logBadAction(socket);
                 return;
             }
-            const PeerSocket = SocketInformation[PeerID].socketObject;
-            const SendData = {
-                PeerID: SocketID
-            }
-            log("INFO", "Recieved a DisconnectFromMe packet from " + SocketID + " wishing to disconnect from " + PeerID);
-            PeerSocket.emit("disconnect_from_user", createEncryptedPacket(SendData, SocketInformation[PeerID].publicKey))
         })
 
         socket.on('peer_conn_req', function(data) {
-            //console.log('recv peer_conn_req')
+            try {
+                //console.log('recv peer_conn_req')
             var decryptedData = decryptEncryptedPacket(data, privateKey);
             const VerificationString = decryptedData.AcceptVerifString;
             const SocketID = decryptedData.MyID;
@@ -336,7 +479,13 @@ try {
                 }
                 socket.emit("peer_conn_res", createEncryptedPacket(SendData, MainPubKey))
                 //log("INFO", `Relayed ConnectionRequest_Response packet to ${SocketID}.`)
-            }) 
+            })
+            } catch (e) {
+                log("WARN", "Exception whilst running peer_conn_req: " + e.message + ". Client has been warned")
+                socket.emit("server_warning", "Malformed request sent to server! Event: peer_conn_req. This will be logged");
+                logBadAction(socket);
+                return;
+            } 
             return;
         })
 
@@ -349,23 +498,31 @@ try {
                     socketObject: socket
                 }
             */
-           const Decrypted = decryptEncryptedPacket(data, privateKey);
-           const ToSendToClient = Decrypted.EncryptedClientData;
-           const PeerID = Decrypted.PeerID;
-           const SocketID = Decrypted.MyID;
-           const SockPubKey = SocketInformation[SocketID].publicKey;
-           const PeerSocketObject = SocketInformation[PeerID].socketObject;
-           const PeerSocketPubKey = SocketInformation[PeerID].publicKey;
-           const mdata = {
-               encrypted: ToSendToClient,
-               PeerID: SocketID,
-               PeerPubKey: SockPubKey
-           }
-           PeerSocketObject.emit('_sentMessage_', createEncryptedPacket(mdata, PeerSocketPubKey));
+           try {
+                const Decrypted = decryptEncryptedPacket(data, privateKey);
+                const ToSendToClient = Decrypted.EncryptedClientData;
+                const PeerID = Decrypted.PeerID;
+                const SocketID = Decrypted.MyID;
+                const SockPubKey = SocketInformation[SocketID].publicKey;
+                const PeerSocketObject = SocketInformation[PeerID].socketObject;
+                const PeerSocketPubKey = SocketInformation[PeerID].publicKey;
+                const mdata = {
+                    encrypted: ToSendToClient,
+                    PeerID: SocketID,
+                    PeerPubKey: SockPubKey
+                }
+                PeerSocketObject.emit('_sentMessage_', createEncryptedPacket(mdata, PeerSocketPubKey));
+            } catch (e) {
+                log("WARN", "Exception whilst running SendMessageToClient: " + e.message + ". Client has been warned")
+                socket.emit("server_warning", "Malformed request sent to server! Event: SendMessageToClient. This will be logged");
+                logBadAction(socket);
+                return;
+            }
         })
 
         socket.on('socket_provide_data', function(data) {
-            // REGISTER THE SOCKET
+            try {
+                // REGISTER THE SOCKET
             const SocketID = data.SockID;
             const SocketPublicKey = data.SockPubKey;
             var ProvidedUUID = data.MyUUID;
@@ -445,28 +602,40 @@ try {
             const EncryptedSendData = createEncryptedPacket(SendData, SocketInformation[SocketID].publicKey)
             socket.emit("server_connection_accepted", EncryptedSendData); // accept the connection
             log("INFO", "Finished registering " + data.SockID);
+            } catch (e) {
+                log("WARN", "Exception whilst running socket_provide_data: " + e.message + ". Client has been warned")
+                socket.emit("server_warning", "Malformed request sent to server! Event: socket_provide_data. This will be logged");
+                logBadAction(socket);
+                return;
+            }
         });
     });
 
     http.listen(LISTENING_PORT, function () {
     console.log('C2CC Server listening on port '+LISTENING_PORT);
     });
-    process.on('SIGINT', function() {
-        var COMPLETE_CONNECTIONS = Math.floor(CURRENT_CONNECTIONS / 2);
-        process.stdout.write(chalk.greenBright('Active connections: ') + CURRENT_CONNECTIONS + "/" + MAX_CONNECTIONS + ` | ${COMPLETE_CONNECTIONS} complete connection(s)\n`)
-        console.log("\nDoing a safe shutdown...")
+    var ON_DEATH = require('death'); 
+    ON_DEATH(function(signal, err) {
+        console.log(chalk.yellowBright("\nRECEIVED "+signal))
+        console.log(chalk.magentaBright("--- RUNNING SHUTDOWN SEQUENCE ---"))
+        var ShutdownClients = 0;
+        process.stdout.write("Disconnected " + ShutdownClients + "/" + sockets.length + " clients\r");
         for (i = 0; i < sockets.length; i++) {
-            const sockID = sockets[i].socket_id;
+            ShutdownClients++;
+            process.stdout.write("Disconnected " + ShutdownClients + "/" + sockets.length + " clients\r");
+            //const sockID = sockets[i].socket_id;
             const currentSocket = sockets[i].socket_obj;
-            log("INFO", "Unregistering " + sockID)
+            //log("INFO", "Disconnecting " + sockID)
             //UnregisterSocket(currentSocket);
             currentSocket.emit("server_warning", "The server has shut down");
             DONT_UNREGISTER = true;
+            DONT_LOG = true;
             currentSocket.disconnect()
         }
+        console.log(chalk.magentaBright("\n--- Server safely shut down ---"));
         console.log("Bye!")
         process.exit()
-    });
+    })
 } catch {
     var COMPLETE_CONNECTIONS = Math.floor(CURRENT_CONNECTIONS / 2);
     process.stdout.write(chalk.greenBright('Active connections: ') + CURRENT_CONNECTIONS + "/" + MAX_CONNECTIONS + ` | ${COMPLETE_CONNECTIONS} complete connection(s)\n`)
@@ -476,15 +645,10 @@ try {
         const currentSocket = sockets[i].socket_obj;
         log("INFO", "Unregistering " + sockID)
         //UnregisterSocket(currentSocket);
-        currentSocket.emit("server_warning", "The server is restarting after a crash");
+        currentSocket.emit("server_warning", "The server has crashed");
         DONT_UNREGISTER = true;
+        DONT_LOG = true;
         currentSocket.disconnect()
     }
-    console.log("Bye!")
-    require("child_process").spawn(process.argv.shift(), process.argv, {
-        cwd: process.cwd(),
-        detached : true,
-        stdio: "inherit"
-    });
     process.exit()
 }

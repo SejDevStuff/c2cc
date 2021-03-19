@@ -22,3 +22,26 @@ module.exports.HOSTNAME = "Default"
     The message of the day of the server, will be shown to the client on connect
 */
 module.exports.MOTD = "A default C2CC server"
+
+
+/*
+    Autoban: This allows the server to automatically ban users if they seem to attack the server
+*/
+module.exports.AUTO_BAN = true;
+
+// AUTO BAN THRESHOLDS //
+
+/*
+    === Malformed requests thresholds ===
+    A malformed request contains illegal objects like "null" or "undefined" that causes the server
+    to crash.
+    This is the amount of malformed requests a client can make before they get
+    banned
+*/
+module.exports.MAL_REQ_THRESHOLD = 5;
+/*
+    For how much time should a client be banned if they exceed MAL_REQ_THRESHOLD and AUTO_BAN is on?
+    (milliseconds)
+    Default is 1 week (7 days = 604800000 ms)
+*/
+module.exports.MAL_REQ_BAN_DURATION = 604800000;

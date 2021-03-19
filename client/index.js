@@ -480,7 +480,21 @@ function listFriend() {
     }
 }
 
-function parser(Command = "", Args = []) {
+function getMyIP() {
+    var http = require('http');
+    http.get('http://bot.whatismyipaddress.com', function(res){
+        res.setEncoding('utf8');
+        res.on('data', function(chunk){
+            flags.MY_PUBLIC_IP = chunk;
+        });
+    });
+}
+
+const sleep = (milliseconds) => {
+    return new Promise(resolve => setTimeout(resolve, milliseconds))
+}
+
+async function parser(Command = "", Args = []) {
     function throwErr(ErrorName, OptionalErrorDetails = "None") {
         console.log(chalk.redBright('ERROR: ['+ErrorName+'] ') + `Passed command: ${Command}; Passed arguments: ${ReadableArgs}; Additional Error Details: ${OptionalErrorDetails}`)
     }
@@ -527,6 +541,25 @@ function parser(Command = "", Args = []) {
         console.log(config);
         return;
     }
+    /*if (Command == "d" || Command == "distress") {
+        if (!TALKING_TO_PEER) {
+            throwErr("incorrect env for cmd", "This command only works if you are connected to a peer");
+            return;
+        } else {
+            process.stdout.write("Getting IP...")
+            async function _getIP() {
+                if (flags.MY_PUBLIC_IP === null || flags.MY_PUBLIC_IP === undefined) {
+                    getMyIP();
+                    await sleep(500);
+                    _getIP();
+                } else {
+                    return;
+                }
+            }
+            await _getIP();
+            process.stdout.write(" done\n")
+        }
+    }*/
     throwErr("command not found")
     return;
 }
@@ -558,20 +591,17 @@ async function prompt(inputMessage = `${chalk.greenBright(`[${HOSTNAME}/${PEER}]
     if (UserInput === null || UserInput === undefined) { 
         ExitProgram();
     }
-    if (TALKING_TO_PEER) {
-        process.stdout.write("\r   \r");
-    }
     UserInput = UserInput.trim();
     if (UserInput == "") return prompt();
     if (TALKING_TO_PEER) {
         if (UserInput.startsWith(config.CHAT_COMMAND_PREFIX)) {
-            const Command = UserInput.replace(config.CHAT_COMMAND_PREFIX,'');
+            const Command = UserInput.replace(config.CHAT_COMMAND_PREFIX,'').replace(/ .*/,'');
             var Args = []
             if (!UserInput.replace(Command, "").trim() == "") {
                 Args = UserInput.replace(Command, "").trim().split(" ");
             }
-            parser(Command, Args);
-            return;
+            await parser(Command, Args);
+            return prompt();
         }
         sendMessage(UserInput);
         return prompt();
@@ -581,7 +611,7 @@ async function prompt(inputMessage = `${chalk.greenBright(`[${HOSTNAME}/${PEER}]
     if (!UserInput.replace(Command, "").trim() == "") {
         Args = UserInput.replace(Command, "").trim().split(" ");
     }
-    parser(Command, Args);
+    await parser(Command, Args);
     return prompt()
 }
 
@@ -623,7 +653,9 @@ setupChecks()
 console.log(`Establishing connection with '${SERVER_DETAILS.IP}:${SERVER_DETAILS.PORT}'...`);
 //console.log(Version)
 
-console.log(`${chalk.magentaBright('If you lose your prompt (the command finished but the prompt does not return) press ENTER')}`)
+const Tips = ['If you lose your prompt (the command finished but the prompt does not return) press ENTER'];
+var randomTip = Tips[Math.floor(Math.random() * Tips.length)];
+console.log(`${chalk.magentaBright(randomTip)}`)
 
 const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
     modulusLength: 4096,
@@ -654,9 +686,12 @@ var flags = {
     MSG_SENT_VERIF_STRING: null,
     MSG_SEND_TIMEOUT: null,
     RETURN_TO_PROMPT: true,
-    PEER_HOSTNAME: "Unknown"
+    PEER_HOSTNAME: "Unknown",
+    LAST_SENT_MESSAGE_TIME: 0,
+    MY_PUBLIC_IP: null
 }
 
+getMyIP();
 
 const USER_C2CC_ID = config.C2CC_ID;
 var UUID = null;
@@ -743,6 +778,7 @@ socket.on('peer_conn_res', function(Encdata) {
         PEER_SERVER_ID = data.responseFrom;
         PEER_PUBLIC_KEY = data.peerPublicKey;
         PEER = PEER_SERVER_ID;
+        flags.LAST_SENT_MESSAGE_TIME = new Date().getTime();
         console.log(chalk.greenBright("\nConnected to " + PEER_SERVER_ID));
         console.log(chalk.magentaBright("\nYou are in chat mode. Anything you send will be interpreted as a message and will be sent to the peer.\nTo do a command, begin your command with a '"+config.CHAT_COMMAND_PREFIX+"'\nTo disconnect from the peer, do '"+config.CHAT_COMMAND_PREFIX+"disconnect'\n"))
         prompt("chat:" + PEER_SERVER_ID + "> ");
@@ -779,6 +815,12 @@ socket.on('server_peerConn_req', async function(data) {
         response: "deny",
         reason: "Unable to understand your request, try again later."
     };
+    if (HandlingMethod == "BLOCKALL") {
+        ResponseData = {
+            response: "deny",
+            reason: "The user is not accepting connections."
+        }
+    }
     if (HandlingMethod == "SYNC") {
         if (TALKING_TO_PEER) {
             ResponseData = {
@@ -811,7 +853,7 @@ socket.on('server_peerConn_req', async function(data) {
                         PEER = user;
                         console.log(chalk.greenBright('Connected to ' + user));
                         console.log(chalk.magentaBright("\nYou are in chat mode. Anything you send will be interpreted as a message and will be sent to the peer.\nTo do a command, begin your command with a '"+config.CHAT_COMMAND_PREFIX+"'\nTo disconnect from the peer, do '"+config.CHAT_COMMAND_PREFIX+"disconnect'\n"))
-                        prompt("chat:" + PEER_SERVER_ID + "> ");
+                        //prompt("chat:" + PEER_SERVER_ID + "> ");
                     } else {
                         ResponseData = {
                             response: "deny",
@@ -920,6 +962,24 @@ socket.on('_sentMessage_', function(messageData) {
                     var Obj = DateObject.getHours() + ":" + DateObject.getMinutes();
                     Obj = Obj.replace(/\b(\d{1})\b/g, '0$1')
                     console.log("\n[" + Obj + "] " + chalk.magentaBright('['+flags.PEER_HOSTNAME+' ('+PEER_SERVER_ID+')]: ') + ClientToClient.PacketContents);
+                    
+                    /* NOTIFER LOGIC */
+                    const notifier = require('node-notifier');
+                    if (config.NOTIFY_ME == true) {
+                        var NowTime = new Date().getTime();
+                        if (eval(NowTime - flags.LAST_SENT_MESSAGE_TIME) > 30000) {
+                            var Message = ClientToClient.PacketContents;
+                            if (Message.length > 30) {
+                                Message = Message.slice(0, 30);
+                                Message = Message + " ...";
+                            }
+                            notifier.notify({
+                                title: '[C2CC] ' + flags.PEER_HOSTNAME + ' says:',
+                                message: Message
+                            });
+                        }
+                    }
+                    
                     prompt("chat:" + PEER_SERVER_ID + "> ");
                 } else if (ClientToClient.PacketType == "VERIF_ACKNOWLEDGEMENT") {
                     const ReturnedVerifString = ClientToClient.PacketContents;
@@ -988,6 +1048,7 @@ function sendMessage(message) {
         prompt();
     }, 8000)
     socket.emit("SendMessageToClient", ClientToServer);
+    flags.LAST_SENT_MESSAGE_TIME = new Date().getTime();
 }
 
 function requestDisconnectFromMe() {

@@ -54,7 +54,7 @@ module.exports.MASTER_HASH_LOC = "master_hash.dat"
     "SYNC"
     This allows you to talk to one person at a time
 
-    "ASYNC"
+    "ASYNC" (!!! NOT SUPPORTED YET !!!)
     This allows you to talk to more than one person at a time,
     but you can only respond to one person. The other people's messages
     are shown in the background
@@ -92,3 +92,9 @@ module.exports.GIVE_SRVR_CHOICE = false;
         server and friend data.
 */
 module.exports.ENCRYPT_DATA = true;
+
+/*
+    Notify you with a message
+    when a peer sent a message if you have not sent a message in 30 seconds.
+*/
+module.exports.NOTIFY_ME = true;

@@ -7,6 +7,7 @@ data/
 
 # Server generated file
 users.json
+banlist.json
 
 # My test js file
 1.js
