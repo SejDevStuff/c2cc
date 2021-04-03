@@ -5,14 +5,29 @@ mkdir -p out/
 mkdir -p out/client
 mkdir -p out/server
 
-cp client/config.js out/client
-cp server/config.js out/server
+#cp client/config.js out/client
+#cp server/config.js out/server
 
-pkg client/index.js --options no-warnings --targets node14-linux-x64 --output out/client/c2cc-linux
-pkg client/index.js --options no-warnings --targets node14-win-x64 --output out/client/c2cc-win.exe
-pkg client/index.js --options no-warnings --targets node14-macos-x64 --output out/client/c2cc-macos
+echo -ne "Compiling client-linux ...\\r"
+pkg client/index.js --options no-warnings --targets node14-linux-x64 --output out/client/c2cc-linux &> /dev/null
+echo "Compiling client-linux ... done"
 
-pkg server/server.js --options no-warnings --targets node14-linux-x64 --output out/server/c2cc-server-linux
-pkg server/server.js --options no-warnings --targets node14-win-x64 --output out/server/c2cc-server-win.exe
-pkg server/server.js --options no-warnings --targets node14-macos-x64 --output out/server/c2cc-server-macos
+echo -ne "Compiling client-win ...\\r"
+pkg client/index.js --options no-warnings --targets node14-win-x64 --output out/client/c2cc-win.exe &> /dev/null
+echo "Compiling client-win ... done"
 
+echo -ne "Compiling client-macos ...\\r"
+pkg client/index.js --options no-warnings --targets node14-macos-x64 --output out/client/c2cc-macos &> /dev/null
+echo "Compiling client-macos ... done"
+
+echo -ne "Compiling server-linux ...\\r"
+pkg server/server.js --options no-warnings --targets node14-linux-x64 --output out/server/c2cc-server-linux &> /dev/null
+echo "Compiling server-linux ... done"
+
+echo -ne "Compiling server-win ...\\r"
+pkg server/server.js --options no-warnings --targets node14-win-x64 --output out/server/c2cc-server-win.exe &> /dev/null
+echo "Compiling server-win ... done"
+
+echo -ne "Compiling server-macos ...\\r"
+pkg server/server.js --options no-warnings --targets node14-macos-x64 --output out/server/c2cc-server-macos &> /dev/null
+echo "Compiling server-macos ... done"

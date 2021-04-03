@@ -4,8 +4,33 @@ var io = require('socket.io')(http);
 var chalk = require('chalk');
 var { v4 } = require('uuid');
 var fs = require('fs');
+const path = require('path');
+
 const SupportedVersionNumber = 0001;
-var Config = require('./config');
+
+var homedir = require('os').homedir();
+
+if (!fs.existsSync(homedir + "/.c2cc/")) {
+    fs.mkdirSync(homedir + "/.c2cc/");
+}
+if (!fs.existsSync(homedir + "/.c2cc/server/")) {
+    fs.mkdirSync(homedir + "/.c2cc/server/");
+}
+var FileDir = homedir + "/.c2cc/server/";
+
+
+var ConfigLocation = FileDir + "/c2cc_server_config.js";
+var StockConfig = path.join(__dirname, '/stock_cfg.js') // get pkg to package this
+if (!fs.existsSync(ConfigLocation)) {
+    if (!fs.existsSync(StockConfig)) {
+        console.log("Error: a critical component is missing");
+        process.exit();
+    } else {
+        fs.writeFileSync(ConfigLocation, fs.readFileSync(StockConfig, 'utf-8'))
+    }
+}
+const Config = require(ConfigLocation);
+console.log(`Your config is at: ${ConfigLocation}`);
 
 const MAX_CONNECTIONS = Config.MAX_CONNECTIONS;
 const LISTENING_PORT = Config.LISTENING_PORT;
@@ -16,8 +41,8 @@ var SocketInformation = {};
 var ConnectionSockets = [];
 var BadActions = {};
 var Banlist = {};
-if (fs.existsSync("./banlist.json")) {
-    Banlist = JSON.parse(fs.readFileSync("./banlist.json", 'utf-8'));
+if (fs.existsSync(FileDir+"/banlist.json")) {
+    Banlist = JSON.parse(fs.readFileSync(FileDir+"/banlist.json", 'utf-8'));
 }
 
 try {
@@ -98,8 +123,8 @@ try {
         return JSON.parse(StringObject);
     }
 
-    if (!fs.existsSync('./users.json')) {
-        fs.writeFileSync('./users.json', "{}")
+    if (!fs.existsSync(FileDir+'/users.json')) {
+        fs.writeFileSync(FileDir+'/users.json', "{}")
     }
     var CURRENT_CONNECTIONS = 0;
 
@@ -155,7 +180,7 @@ try {
             BannedUntil: Number(duration)
         }
         Banlist[IPHash] = BannedInformation;
-        fs.writeFileSync("./banlist.json", JSON.stringify(Banlist, null, 2));
+        fs.writeFileSync(FileDir+"/banlist.json", JSON.stringify(Banlist, null, 2));
         const IsBannedObject = {
             reason: reason,
             until: Number(duration)
@@ -228,10 +253,10 @@ try {
 
 
     function loadUserlist() {
-        if (!fs.existsSync('./users.json')) {
-            fs.writeFileSync('./users.json', "{}")
+        if (!fs.existsSync(FileDir+'/users.json')) {
+            fs.writeFileSync(FileDir+'/users.json', "{}")
         }
-        return JSON.parse(fs.readFileSync('./users.json', 'utf-8'))
+        return JSON.parse(fs.readFileSync(FileDir+'/users.json', 'utf-8'))
     }
 
     function registerUser(socketID, uuid) {
@@ -240,7 +265,7 @@ try {
             UUID: uuid
         }
         list[socketID] = obj;
-        fs.writeFileSync('./users.json', JSON.stringify(list, null, 2))
+        fs.writeFileSync(FileDir+'/users.json', JSON.stringify(list, null, 2))
     }
 
     function userExists(socketID) {

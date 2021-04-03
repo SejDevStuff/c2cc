@@ -25,17 +25,23 @@ C2CC comes with some advantages over the conventional GUI based chat apps:
 **To protect servers and other users, servers will refuse connections if your client is older (or newer for that matter) than the version the server supports. This is because if the client has an exploit which is bad for the server, it can stay somewhat protected.
 
 ## Installation
-Go to the releases tab and either install the server-OSHERE.zip or client-OSHERE.zip depending on what you want to install. (Where "OSHERE" is the name of your OS, either Windows, MacOS or Linux)
+Go to the releases tab and either install the server-OSHERE.zip or client-OSHERE.zip depending on what you want to install. (Where "OSHERE" is the name of your OS, either win, macos or linux)
 
 ### For clients
-Extract the files from client.zip into a folder, possibly a new folder as the program will create its own files.
-Edit the config.json file, put your config values in there, most importantly fill in the C2CC_ID, HOSTNAME, SERVER_ADDR and ENCRYPT_DATA values, you may wish to change other values.
-Run the C2CC executable (the name varies with the OS, for Windows its "c2cc.exe", for Linux its just "c2cc" (which you run in the terminal by doing "chmod +x c2cc" and then "./c2cc"), etc.) to get set up.
+- Extract the files from client-OSHERE.zip (OSHERE is your OS, win, macos, or linux) into a folder.
+
+- Run the C2CC executable (the name varies with the OS, for Windows its "c2cc-win.exe", for Linux its "c2cc-linux" (which you run in the terminal by doing "chmod +x c2cc-linux" and then "./c2cc-linux"), etc.) to get set up.
+
+- On the first time you run the program, it will create a ".c2cc" directory in your HOME folder (eg: for linux its '/home/USERNAME' and for windows its 'C:\Users\USERNAME\', etc) and inside the .c2cc folder it will create a 'client' folder. Your config is found in this folder, it is called 'c2cc_client_config.js'. If it is successful, it will tell you so.
+
+- Edit the c2cc_client_config.js file, put your config values in there, most importantly fill in the C2CC_ID, HOSTNAME, SERVER_ADDR and ENCRYPT_DATA values, you may wish to change other values.
 
 ### For servers
-Extract the files from server.zip into a folder, possibly a new folder as the program will create its own files.
-Edit the config.json file, no value change is required but you may wish to change the server port and other things.
-Run the C2CC Server executable (the name varies with the OS, for Windows its "c2cc_server.exe", for Linux its just "c2cc_server" (which you run in the terminal by doing "chmod +x c2cc_server" and then "./c2cc_server"), etc.) to get set up. The default C2CC server port is 6162
+- Extract the files from server-OSHERE.zip (OSHERE is your OS, win, macos, or linux) into a folder.
+
+- Run the C2CC executable (the name varies with the OS, for Windows its "c2cc-server-win.exe", for Linux its "c2cc-server-linux" (which you run in the terminal by doing "chmod +x c2cc-server-linux" and then "./c2cc-server-linux"), etc.) to get set up.
+
+- On the first time you run the program, it will create a ".c2cc" directory in your HOME folder (eg: for linux its '/home/USERNAME' and for windows its 'C:\Users\USERNAME\', etc) and inside the .c2cc folder it will create a 'server' folder. Your config is found in this folder, it is called 'c2cc_server_config.js'. You do not need to change any values by default
 
 ## Updating
 Updating is as simple as getting the latest zip archive of the software you want from the C2CC repo, and replacing the old executable file with the new one and re-running the program.

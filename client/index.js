@@ -11,6 +11,8 @@ const randomWords = require('random-words')
 const promptsync = require('prompt-sync')();
 var PROGRAM_INITALISED = false;
 var DECRYPTION_KEY = "";
+const path = require('path');
+
 console.clear();
 
 function ExitProgram(message = "exit") {
@@ -19,18 +21,47 @@ function ExitProgram(message = "exit") {
     process.exit()
 }
 
+var Filelist = [];
+const files = fs.readdirSync(__dirname);
+
+files.forEach(file => {
+    Filelist.push(file)
+});
+
 function ProgramError(ErrorName, ErrorMessage) {
     console.log(`Uh oh! ${chalk.redBright("" + ErrorName + "")} => ${chalk.whiteBright(ErrorMessage)}`);
+    if (ErrorName == "Missing Component Error") {
+        console.log(chalk.blueBright("DEBUG") + " Component list: " + Filelist)
+    }
     ExitProgram("Program exited on error.");
 }
+var homedir = require('os').homedir();
 
-if (!fs.existsSync('./config.js')) {
-    ProgramError("MISSING_CONFIG_FILE", "Missing config file: this is needed for this program to function")
+if (!fs.existsSync(homedir + "/.c2cc/")) {
+    fs.mkdirSync(homedir + "/.c2cc/");
 }
-var config = require('./config');
+if (!fs.existsSync(homedir + "/.c2cc/client/")) {
+    fs.mkdirSync(homedir + "/.c2cc/client/");
+}
+var FileDir = homedir + "/.c2cc/client/";
+
+var ConfigLocation = FileDir + "/c2cc_client_config.js";
+var StockConfig = path.join(__dirname, '/stock_cfg.js')
+if (!fs.existsSync(ConfigLocation)) {
+    if (fs.existsSync(StockConfig)) {
+        fs.writeFileSync(ConfigLocation, fs.readFileSync(StockConfig, 'utf-8'))
+        console.log(chalk.greenBright("Welcome to C2CC! ") + `Please edit the config which can be found at ${ConfigLocation} before starting this program.`);
+        process.exit()
+    } else {
+        ProgramError("Missing Component Error", "A critical component is missing.");
+    }
+}
+const config = require(ConfigLocation);
+console.log(`Your config is at: ${ConfigLocation}`);
+
 var ENCRYPT_DATA = config.ENCRYPT_DATA;
 
-config.DATA_DIR = process.cwd() + config.DATA_DIR;
+config.DATA_DIR = FileDir + config.DATA_DIR;
 
 if (!fs.existsSync(config.DATA_DIR)) {
     fs.mkdirSync(config.DATA_DIR);
@@ -616,7 +647,7 @@ async function prompt(inputMessage = `${chalk.greenBright(`[${HOSTNAME}/${PEER}]
 }
 
 function setupChecks() {
-    if (!fs.existsSync(".setup")) {
+    if (!fs.existsSync(FileDir + ".setup")) {
         console.clear()
         console.log(chalk.yellowBright(`It seems to be your first time here, welcome to C2CC, the console-based chat app!`))
         console.log(chalk.italic('All configuration for this can be edited in the "config.js" in the C2CC program directory.'))
@@ -644,7 +675,7 @@ function setupChecks() {
         console.log(chalk.yellowBright('1') + ": This is your username, you can change this in the config")
         console.log(chalk.yellowBright('2') + ": This is the current peer you are talking to.")
         console.log(chalk.greenBright('For help in the prompt, just type "help"!'));
-        fs.writeFileSync(".setup", "This file stops the welcome screen from appearing, you can remove it to make it appear again the next time the program starts")
+        fs.writeFileSync(FileDir + ".setup", "This file stops the welcome screen from appearing, you can remove it to make it appear again the next time the program starts")
     }
 }
 
@@ -656,7 +687,7 @@ console.log(`Establishing connection with '${SERVER_DETAILS.IP}:${SERVER_DETAILS
 const Tips = ['If you lose your prompt (the command finished but the prompt does not return) press ENTER'];
 var randomTip = Tips[Math.floor(Math.random() * Tips.length)];
 console.log(`${chalk.magentaBright(randomTip)}`)
-
+console.log(`Your config is at: ${ConfigLocation}`);
 const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
     modulusLength: 4096,
     publicKeyEncoding: {

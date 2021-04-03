@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
+  "pkg":{
+    "assets":["stock_cfg.js"]
+  },
   "dependencies": {
     "aes-js": "^3.1.2",
     "chalk": "^4.1.0",
