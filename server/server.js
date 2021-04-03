@@ -5,7 +5,6 @@ var chalk = require('chalk');
 var { v4 } = require('uuid');
 var fs = require('fs');
 const path = require('path');
-
 const SupportedVersionNumber = 0001;
 
 var homedir = require('os').homedir();
@@ -30,7 +29,6 @@ if (!fs.existsSync(ConfigLocation)) {
     }
 }
 const Config = require(ConfigLocation);
-console.log(`Your config is at: ${ConfigLocation}`);
 
 const MAX_CONNECTIONS = Config.MAX_CONNECTIONS;
 const LISTENING_PORT = Config.LISTENING_PORT;
@@ -62,6 +60,7 @@ try {
         }
     }
     console.clear()
+    console.log(`Your config is at: ${ConfigLocation}`);
     console.log("Starting C2CC Server on port " + LISTENING_PORT)
     log("INFO", "Generating keypairs...")
     const crypto = require('crypto');
@@ -270,7 +269,7 @@ try {
 
     function userExists(socketID) {
         var list = loadUserlist();
-        if (list[socketID] === undefined || list[socketID] === null) {
+        if (list[socketID] === undefined || list[socketID] === null || list[socketID].UUID === undefined || list[socketID].UUID === null) {
             return false;
         } else {
             return true;
@@ -588,11 +587,17 @@ try {
             // AUTHENTICATE USER
             var GeneratedUUID = null;
             if (userExists(SocketID)) {
+                if (!ProvidedUUID) {
+                    socket.emit("server_warning", "The authentication information provided is invalid.");
+                    log("WARN", SocketID + " failed at verifyProvidedUUID():Authentication-3");
+                    socket.disconnect();
+                    return;
+                }
                 var UUID = getUUID(SocketID)
                 ProvidedUUID = ProvidedUUID.replace(/["]/g, "");
                 if (md5(ProvidedUUID) !== UUID) {
                     socket.emit("server_warning", "The authentication information provided is invalid.");
-                    log("WARN", SocketID + " failed at verifyProvidedUUID():Authentication-3");
+                    log("WARN", SocketID + " failed at verifyProvidedUUID():Authentication-4");
                     socket.disconnect();
                     return;
                 }

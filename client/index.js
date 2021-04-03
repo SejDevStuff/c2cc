@@ -276,7 +276,7 @@ function getServerList() {
             var decryptedData = decrypt(encryptedData, DECRYPTION_KEY);
             return JSON.parse(decryptedData);
         } else {
-            return JSON.parse(fs.readFileSync(config.SRVR_UUID));
+            return JSON.parse(fs.readFileSync(config.SRVR_UUID, 'utf-8'));
         }
     } else {
         return {};
@@ -722,7 +722,8 @@ var flags = {
     MY_PUBLIC_IP: null
 }
 
-getMyIP();
+// THIS CAUSED SO MUCH TROUBLE FOR ME IN WINDOWS!
+//getMyIP();
 
 const USER_C2CC_ID = config.C2CC_ID;
 var UUID = null;
