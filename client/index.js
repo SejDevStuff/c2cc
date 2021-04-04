@@ -296,7 +296,7 @@ function savePublicKey(key) {
         var encryptedData = encrypt(decryptedData, DECRYPTION_KEY);
         fs.writeFileSync(config.SRVR_UUID, encryptedData);
     } else {
-        fs.writeFileSync(config.SRVR_UUID, ExistingList);
+        fs.writeFileSync(config.SRVR_UUID, JSON.stringify(ExistingList));
     }
 }
 
@@ -313,7 +313,7 @@ function saveUUID(uuid) {
         var encryptedData = encrypt(decryptedData, DECRYPTION_KEY);
         fs.writeFileSync(config.SRVR_UUID, encryptedData);
     } else {
-        fs.writeFileSync(config.SRVR_UUID, ExistingList);
+        fs.writeFileSync(config.SRVR_UUID, JSON.stringify(ExistingList));
     }
 }
 
