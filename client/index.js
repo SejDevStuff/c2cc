@@ -967,10 +967,10 @@ async function prompt(inputMessage = `${chalk.greenBright(`[${HOSTNAME}/${PEER}]
 }
 
 function setupChecks() {
-    if (!fs.existsSync(FileDir + ".setup")) {
+    if (!fs.existsSync(FileDir + "setup")) {
         console.clear()
         console.log(chalk.yellowBright(`It seems to be your first time here, welcome to C2CC, the console-based chat app!`))
-        console.log(chalk.italic('All configuration for this can be edited in the "config.js" in the C2CC program directory.'))
+        console.log(chalk.italic('All configuration for this can be edited in the config file located at "'+ConfigLocation+'".'))
         console.log(`\n${chalk.magentaBright("Here is your prompt:")}`)
         console.log(`${chalk.greenBright(`[${HOSTNAME}/${PEER}]`)}: `);
         var Label1 = "";
@@ -994,8 +994,8 @@ function setupChecks() {
         console.log(` ${Label1} ${Label2}\n`);
         console.log(chalk.yellowBright('1') + ": This is your username, you can change this in the config")
         console.log(chalk.yellowBright('2') + ": This is the current peer you are talking to.")
-        console.log(chalk.greenBright('For help in the prompt, just type "help"!'));
-        fs.writeFileSync(FileDir + ".setup", "This file stops the welcome screen from appearing, you can remove it to make it appear again the next time the program starts")
+        fs.writeFileSync(FileDir + "setup", "This file stops the welcome screen from appearing, you can remove it to make it appear again the next time the program starts")
+        promptsync("Press ENTER to continue");
     }
 }
 
