@@ -5,8 +5,9 @@ var chalk = require('chalk');
 var { v4 } = require('uuid');
 var fs = require('fs');
 const path = require('path');
+const promptsync = require('prompt-sync')();
 const SupportedVersionNumber = 0001;
-
+console.clear();
 var homedir = require('os').homedir();
 
 if (!fs.existsSync(homedir + "/.c2cc/")) {
@@ -28,6 +29,136 @@ if (!fs.existsSync(ConfigLocation)) {
         fs.writeFileSync(ConfigLocation, fs.readFileSync(StockConfig, 'utf-8'))
     }
 }
+
+var d1 = fs.readFileSync(ConfigLocation, 'UTF-8');
+ConfigLines = d1.split(/\r?\n/)
+
+var d2 = fs.readFileSync(StockConfig, 'UTF-8');
+StockCfgLines = d2.split(/\r?\n/)
+
+var StockValues = [];
+var MatchingLines = 0;
+var ShouldWriteConfig = false;
+
+function matchTest() {
+    for (i = 0; i < StockCfgLines.length; i++) {
+        var Matched = false;
+        if (StockCfgLines[i].startsWith("module.exports.")) {
+            var CurrentLine = "";
+            var CurrentAnswer = "";
+            var LogAnswer = false;
+            for (i2 = 0; i2 < StockCfgLines[i].length; i2++) {
+                if (LogAnswer) {
+                    CurrentAnswer += StockCfgLines[i][i2];
+                    continue;
+                }
+                if (StockCfgLines[i][i2] == " ") {
+                    LogAnswer = true;
+                    continue;
+                }
+                CurrentLine += StockCfgLines[i][i2];
+            }
+            CurrentLine = CurrentLine.replace("module.exports.", "");
+            CurrentAnswer = CurrentAnswer.trim().replace("=", "");
+            StockValues.push(CurrentLine)
+            for (i4 = 0; i4 < ConfigLines.length; i4++) {
+                var CurrentConfigLine = "";
+                for (i3 = 0; i3 < ConfigLines[i4].length; i3++) {
+                    if (ConfigLines[i4][i3] == " ") {
+                        break;
+                    }
+                    CurrentConfigLine += ConfigLines[i4][i3];
+                }
+                CurrentConfigLine = CurrentConfigLine.replace("module.exports.", "");
+                if (CurrentConfigLine == CurrentLine) {
+                    MatchingLines++;
+                    Matched = true;
+                    break;
+                }
+            }
+            if (Matched == false) {
+                console.log(chalk.yellowBright("Warning!") + " no matches for value '"+CurrentLine+"'")
+
+                // get last value before this value
+                var LastValue = "";
+                for (i5 = 0; i5 < StockValues.length; i5++) {
+                    if (StockValues[i5] == CurrentLine) {
+                        LastValue = StockValues[i5-1];
+                    }
+                }
+
+                // scan file and take in the comments, starting from the last value
+                var StartScan = false;
+                var ScanResults = [];
+                for (i6 = 0; i6 < StockCfgLines.length; i6++) {
+                    if (StockCfgLines[i6].startsWith("module.exports."+LastValue+" = ")) {
+                        StartScan = true;
+                        continue;
+                    }
+                    if (StockCfgLines[i6].startsWith("module.exports."+CurrentLine+" = ")) {
+                        StartScan = false;
+                        break;
+                    }
+                    if (StartScan) {
+                        ScanResults.push(StockCfgLines[i6])
+                    }
+                }
+
+                // write that value to the end of config
+                for (i7 = 0; i7 < ScanResults.length; i7++) {
+                    ConfigLines.push(ScanResults[i7]);
+                }
+                ConfigLines.push("module.exports."+CurrentLine+" = "+CurrentAnswer);
+                ShouldWriteConfig = true;
+            }
+        }
+    }
+    if (ShouldWriteConfig) {
+        console.log("\n"+chalk.blueBright("Note: ")+"For the program to work, your config must be updated, updating will NOT remove existing config data, it will only add new config values.");
+        function internalPrompt() {
+            var input = promptsync("Do you want to update your config? (y/n): ");
+            if (input === undefined || input === null) {
+                process.exit();
+            }
+            if (input.trim() == "") return internalPrompt();
+            if (input.trim().toUpperCase() == "Y") {
+                updateConfig();
+            } else if (input.trim().toUpperCase() == "N") {
+                process.exit();
+            } else {
+                console.log(`'${input}'?`);
+                return internalPrompt()
+            }
+        }
+        internalPrompt();
+    } else {
+        console.log(chalk.greenBright("Yay!") + " Your config should work fine with this application.\n")
+    }
+}
+
+function updateConfig(array = null) {
+    var linesWritten = 0
+    var Written = "";
+
+    if (array === null) {
+        array = ConfigLines
+    }
+
+    console.log("Updating config... " + chalk.yellowBright("DO NOT INTERRUPT"))
+    for (i8=0;i8<array.length;i8++) {
+        linesWritten++;
+        process.stdout.write(chalk.blueBright("Wrote " + linesWritten + " lines\r"))
+        if (array[i8] === undefined) {
+            Written += "\n";
+        } else {
+            Written += array[i8] + "\n";
+        }
+    }
+    fs.writeFileSync(ConfigLocation, Written)
+    process.stdout.write("\n\nPlease restart the application\n")
+    process.exit()
+}
+
 const Config = require(ConfigLocation);
 
 const MAX_CONNECTIONS = Config.MAX_CONNECTIONS;
@@ -59,8 +190,9 @@ try {
             console.log(chalk.whiteBright(reason) + " " + message)
         }
     }
-    console.clear()
     console.log(`Your config is at: ${ConfigLocation}`);
+    log("INFO", "Server:PreStartup -> Running match test...")
+    matchTest();
     console.log("Starting C2CC Server on port " + LISTENING_PORT)
     log("INFO", "Generating keypairs...")
     const crypto = require('crypto');
@@ -666,9 +798,8 @@ try {
         console.log("Bye!")
         process.exit()
     })
-} catch {
-    var COMPLETE_CONNECTIONS = Math.floor(CURRENT_CONNECTIONS / 2);
-    process.stdout.write(chalk.greenBright('Active connections: ') + CURRENT_CONNECTIONS + "/" + MAX_CONNECTIONS + ` | ${COMPLETE_CONNECTIONS} complete connection(s)\n`)
+} catch (e) {
+    console.log(chalk.redBright("SERVER CRASH DETECTED! ") + e.message)
     console.log("\nDoing a safe shutdown...")
     for (i = 0; i < sockets.length; i++) {
         const sockID = sockets[i].socket_id;

@@ -1,4 +1,7 @@
 #!/bin/bash
+
+clear
+
 rm -rf out/
 mkdir -p out/
 
@@ -20,6 +23,25 @@ echo -ne "Compiling client-macos ...\\r"
 pkg client/index.js --options no-warnings --targets node14-macos-x64 --output out/client/c2cc-macos &> /dev/null
 echo "Compiling client-macos ... done"
 
+echo -ne "\\n"
+
+cd out/client
+echo -ne "Compressing client-linux ...\\r"
+7z a ../client-linux.zip c2cc-linux &>/dev/null
+echo "Compressing client-linux ... done"
+
+echo -ne "Compressing client-win ...\\r"
+7z a ../client-win.zip c2cc-win.exe &>/dev/null
+echo "Compressing client-win ... done"
+
+echo -ne "Compressing client-macos ...\\r"
+7z a ../client-macos.zip c2cc-macos &>/dev/null
+echo "Compressing client-macos ... done"
+
+cd ../..
+
+echo -ne "\\n"
+
 echo -ne "Compiling server-linux ...\\r"
 pkg server/server.js --options no-warnings --targets node14-linux-x64 --output out/server/c2cc-server-linux &> /dev/null
 echo "Compiling server-linux ... done"
@@ -31,3 +53,20 @@ echo "Compiling server-win ... done"
 echo -ne "Compiling server-macos ...\\r"
 pkg server/server.js --options no-warnings --targets node14-macos-x64 --output out/server/c2cc-server-macos &> /dev/null
 echo "Compiling server-macos ... done"
+
+echo -ne "\\n"
+
+cd out/client
+echo -ne "Compressing server-linux ...\\r"
+7z a ../server-linux.zip c2cc-server-linux &>/dev/null
+echo "Compressing server-linux ... done"
+
+echo -ne "Compressing server-win ...\\r"
+7z a ../server-win.zip c2cc-server-win.exe &>/dev/null
+echo "Compressing server-win ... done"
+
+echo -ne "Compressing server-macos ...\\r"
+7z a ../server-macos.zip c2cc-server-macos &>/dev/null
+echo "Compressing server-macos ... done"
+
+cd ../..

@@ -44,18 +44,338 @@ if (!fs.existsSync(homedir + "/.c2cc/client/")) {
     fs.mkdirSync(homedir + "/.c2cc/client/");
 }
 var FileDir = homedir + "/.c2cc/client/";
+console.log("Starting...")
+
+var ConfigLines = [];
+var StockCfgLines = [];
 
 var ConfigLocation = FileDir + "/c2cc_client_config.js";
 var StockConfig = path.join(__dirname, '/stock_cfg.js')
 if (!fs.existsSync(ConfigLocation)) {
     if (fs.existsSync(StockConfig)) {
         fs.writeFileSync(ConfigLocation, fs.readFileSync(StockConfig, 'utf-8'))
-        console.log(chalk.greenBright("Welcome to C2CC! ") + `Please edit the config which can be found at ${ConfigLocation} before starting this program.`);
-        process.exit()
+        console.log(chalk.greenBright("Welcome to C2CC! It seems to be your first time here...\n"))
+        function ip2() {
+            console.log("Do you want to (a)utomatically edit your config [ie: edit it here] or (m)anually edit it [ie: edit it in a text editor]?")
+            var input2 = promptsync("Choice (a/m): ")
+            if (input2 === undefined || input2 === null) {
+                console.log(`Please edit the config here: ${ConfigLocation} and then restart the application.`)
+                process.exit()
+            }
+            if (input2.toUpperCase() == "A") {
+                return autoFillConfig();
+            } else {
+                console.log(`Please edit the config here: ${ConfigLocation} and then restart the application.`)
+                process.exit()
+            }
+        }
+        ip2()
     } else {
         ProgramError("Missing Component Error", "A critical component is missing.");
     }
 }
+
+var d1 = fs.readFileSync(ConfigLocation, 'UTF-8');
+ConfigLines = d1.split(/\r?\n/)
+
+var d2 = fs.readFileSync(StockConfig, 'UTF-8');
+StockCfgLines = d2.split(/\r?\n/)
+
+function autoFillConfig() {
+    var d1 = fs.readFileSync(ConfigLocation, 'UTF-8');
+    ConfigLines = d1.split(/\r?\n/)
+    var ToWriteConfigLines = ConfigLines;
+    console.log("\nPress CTRL+D at any time to exit without saving changes");
+    console.log(chalk.blueBright("Remember to use double quotes for strings, the program won't add them in for you\nFailing to do so may mean the program will crash!")+"\n")
+    for (i = 0; i < ConfigLines.length; i++) {
+        if (ConfigLines[i].startsWith("module.exports.")) {
+            var ConfigVal = "";
+            var ConfigAnswer = "";
+            var LogAnswer = false;
+            for (i2 = 0; i2 < ConfigLines[i].length; i2++) {
+                if (LogAnswer) {
+                    ConfigAnswer += ConfigLines[i][i2];
+                    continue;
+                }
+                if (ConfigLines[i][i2] == " ") {
+                    LogAnswer = true;
+                    continue;
+                }
+                ConfigVal += ConfigLines[i][i2];
+            }
+            ConfigVal = ConfigVal.replace("module.exports.", "");
+            ConfigAnswer = ConfigAnswer.trim().replace("=", "").replace(";", "");
+
+            var StartScan = false;
+            var ScanResults = [];
+            for (i6 = 0; i6 < ConfigLines.length; i6++) {
+                if (ConfigLines[i6].startsWith("/* HELP_BEGIN "+ ConfigVal)) {
+                    StartScan = true;
+                    continue;
+                }
+                if (ConfigLines[i6].startsWith("* HELP_END "+ ConfigVal + " */")) {
+                    StartScan = false;
+                    break;
+                }
+                if (StartScan) {
+                    ScanResults.push(ConfigLines[i6])
+                }
+            }
+            var helptxt = "";
+            for (i0 = 0; i0 < ScanResults.length; i0++) {
+                var res = ScanResults[i0].replace("/*","").replace("/*","");
+                if (res.trim() == "") helptxt += "\n";
+                helptxt += res.trim() + "\n"
+            }
+            console.log(chalk.yellowBright('-'.repeat(process.stdout.columns)))
+
+            if (helptxt.trim() == "") {
+                console.log(`\n${chalk.grey("No help available for this value")}`)
+            } else {
+                console.log(`\n${chalk.grey(helptxt)}\n`)
+            }
+
+            function internalPrompt() {
+                var input = promptsync("Enter value for '"+ConfigVal+"' (default is: "+ConfigAnswer+", press ENTER to use default): ")
+                if (input === null || input === undefined) {
+                    process.exit();
+                }
+                if (input.trim() == "") {
+                    input = ConfigAnswer
+                }
+                console.log(`${chalk.blueBright("INFO: ")} ${ConfigVal} = ${input}`);
+                ToWriteConfigLines[i] = "module.exports."+ConfigVal+" = "+input+";";
+                return;
+            }
+            internalPrompt();
+            continue;
+        }
+    }
+    function internalPrompt2() {
+        var input = promptsync("Do you want to save changes? (y/n): ");
+        if (input === undefined || input === null) {
+            process.exit();
+        }
+        if (input.trim() == "") return internalPrompt2();
+        if (input.trim().toUpperCase() == "Y") {
+            updateConfig(ToWriteConfigLines);
+        } else if (input.trim().toUpperCase() == "N") {
+            process.exit();
+        } else {
+            console.log(`'${input}'?`);
+            return internalPrompt2()
+        }
+    }
+    console.log("\n\n"+chalk.magentaBright('='.repeat(process.stdout.columns)))
+    console.log(chalk.greenBright("Sweet!") + " You're done!");
+    internalPrompt2();
+}
+
+
+console.log("\nAnalysing StockConfig...");
+var StockConfigValues = 0;
+for (i = 0; i < StockCfgLines.length; i++) {
+    if (StockCfgLines[i].startsWith("module.exports.")) {
+        StockConfigValues++;
+    }
+}
+console.log("There are " + chalk.yellowBright(StockConfigValues) + " config values in StockConfig")
+
+console.log("\nAnalysing your config ("+ConfigLocation+")...");
+var ConfigValues = 0;
+for (i = 0; i < ConfigLines.length; i++) {
+    if (ConfigLines[i].startsWith("module.exports.")) {
+        ConfigValues++;
+    }
+}
+console.log("There are " + chalk.yellowBright(ConfigValues) + " config values in your config.")
+var MatchingLines = 0;
+var ShouldWriteConfig = false;
+var StockValues = [];
+
+
+function updateConfig(array = null) {
+    var linesWritten = 0
+    var Written = "";
+
+    if (array === null) {
+        array = ConfigLines
+    }
+
+    console.log("Updating config... " + chalk.yellowBright("DO NOT INTERRUPT"))
+    for (i8=0;i8<array.length;i8++) {
+        linesWritten++;
+        process.stdout.write(chalk.blueBright("Wrote " + linesWritten + " lines\r"))
+        if (array[i8] === undefined) {
+            Written += "\n";
+        } else {
+            Written += array[i8] + "\n";
+        }
+    }
+    fs.writeFileSync(ConfigLocation, Written)
+    process.stdout.write("\n\nPlease restart the application\n")
+    process.exit()
+}
+
+function matchTest() {
+    for (i = 0; i < StockCfgLines.length; i++) {
+        var Matched = false;
+        if (StockCfgLines[i].startsWith("module.exports.")) {
+            var CurrentLine = "";
+            var CurrentAnswer = "";
+            var LogAnswer = false;
+            for (i2 = 0; i2 < StockCfgLines[i].length; i2++) {
+                if (LogAnswer) {
+                    CurrentAnswer += StockCfgLines[i][i2];
+                    continue;
+                }
+                if (StockCfgLines[i][i2] == " ") {
+                    LogAnswer = true;
+                    continue;
+                }
+                CurrentLine += StockCfgLines[i][i2];
+            }
+            CurrentLine = CurrentLine.replace("module.exports.", "");
+            CurrentAnswer = CurrentAnswer.trim().replace("=", "");
+            StockValues.push(CurrentLine)
+            for (i4 = 0; i4 < ConfigLines.length; i4++) {
+                var CurrentConfigLine = "";
+                for (i3 = 0; i3 < ConfigLines[i4].length; i3++) {
+                    if (ConfigLines[i4][i3] == " ") {
+                        break;
+                    }
+                    CurrentConfigLine += ConfigLines[i4][i3];
+                }
+                CurrentConfigLine = CurrentConfigLine.replace("module.exports.", "");
+                if (CurrentConfigLine == CurrentLine) {
+                    MatchingLines++;
+                    Matched = true;
+                    break;
+                }
+            }
+            if (Matched == false) {
+                console.log(chalk.yellowBright("Warning!") + " no matches for value '"+CurrentLine+"'")
+
+                // get last value before this value
+                var LastValue = "";
+                for (i5 = 0; i5 < StockValues.length; i5++) {
+                    if (StockValues[i5] == CurrentLine) {
+                        LastValue = StockValues[i5-1];
+                    }
+                }
+
+                // scan file and take in the comments, starting from the last value
+                var StartScan = false;
+                var ScanResults = [];
+                for (i6 = 0; i6 < StockCfgLines.length; i6++) {
+                    if (StockCfgLines[i6].startsWith("module.exports."+LastValue+" = ")) {
+                        StartScan = true;
+                        continue;
+                    }
+                    if (StockCfgLines[i6].startsWith("module.exports."+CurrentLine+" = ")) {
+                        StartScan = false;
+                        break;
+                    }
+                    if (StartScan) {
+                        ScanResults.push(StockCfgLines[i6])
+                    }
+                }
+
+                // write that value to the end of config
+                for (i7 = 0; i7 < ScanResults.length; i7++) {
+                    ConfigLines.push(ScanResults[i7]);
+                }
+                ConfigLines.push("module.exports."+CurrentLine+" = "+CurrentAnswer);
+                ShouldWriteConfig = true;
+            }
+        }
+    }
+    if (ShouldWriteConfig) {
+        console.log("\n"+chalk.blueBright("Note: ")+"For the program to work, your config must be updated, updating will NOT remove existing config data, it will only add new config values.");
+        function internalPrompt() {
+            var input = promptsync("Do you want to update your config? (y/n): ");
+            if (input === undefined || input === null) {
+                process.exit();
+            }
+            if (input.trim() == "") return internalPrompt();
+            if (input.trim().toUpperCase() == "Y") {
+                updateConfig();
+                function ip2() {
+                    console.log("Do you want to (a)utomatically edit your config [ie: edit it here] or (m)anually edit it [ie: edit it in a text editor]?")
+                    var input2 = promptsync("Choice (a/m): ")
+                    if (input2 === undefined || input2 === null) {
+                        console.log(`Please edit the config here: ${ConfigLocation} and then restart the application.`)
+                        process.exit()
+                    }
+                    if (input2.toUpperCase() == "A") {
+                        autoFillConfig();
+                    } else {
+                        console.log(`Please edit the config here: ${ConfigLocation} and then restart the application.`)
+                        process.exit()
+                    }
+                }
+                ip2()
+            } else if (input.trim().toUpperCase() == "N") {
+                process.exit();
+            } else {
+                console.log(`'${input}'?`);
+                return internalPrompt()
+            }
+        }
+        internalPrompt();
+    } else {
+        console.log(chalk.greenBright("Yay!") + " Your config should work fine with this application.\n")
+    }
+}
+
+if (ConfigValues > StockConfigValues) {
+    console.log("\nYour config appears to be newer.");
+} else if (StockConfigValues > ConfigValues) {
+    console.log("\nYou seem to have an older version of the config.");
+}
+
+console.log("Running match-test...");
+matchTest();
+
+function calculatePercent(v1, v2) {
+    return (Number(v1) / Number(v2)) * 100
+}
+
+if (calculatePercent(Number(MatchingLines), Number(StockConfigValues)) < 100) {
+    console.log(chalk.yellowBright("Warning! ") + "Your config appears to be incompatible for this program, it may crash.");
+    function internalPrompt() {
+        var input = promptsync("Do you want to update your config? [Old config data is preserved] (y/n): ");
+        if (input === undefined || input === null) {
+            process.exit();
+        }
+        if (input.trim() == "") return internalPrompt();
+        if (input.trim().toUpperCase() == "Y") {
+            updateConfig();
+            function ip2() {
+                console.log("Do you want to (a)utomatically edit your config [ie: edit it here] or (m)anually edit it [ie: edit it in a text editor]?")
+                var input2 = promptsync("Choice (a/m): ")
+                if (input2 === undefined || input2 === null) {
+                    console.log(`Please edit the config here: ${ConfigLocation} and then restart the application.`)
+                    process.exit()
+                }
+                if (input2.toUpperCase() == "A") {
+                    autoFillConfig();
+                } else {
+                    console.log(`Please edit the config here: ${ConfigLocation} and then restart the application.`)
+                    process.exit()
+                }
+            }
+            ip2()
+        } else if (input.trim().toUpperCase() == "N") {
+            console.log("Continuing without updating...")
+        } else {
+            console.log(`'${input}'?`);
+            return internalPrompt()
+        }
+    }
+    internalPrompt();
+}
+
 const config = require(ConfigLocation);
 console.log(`Your config is at: ${ConfigLocation}`);
 
@@ -331,7 +651,6 @@ if (HOSTNAME.trim() == "" || HOSTNAME === undefined) {
     ProgramError("MISSING_CONFIG_VALUE", "Please add a HOSTNAME value to config.js")
 }
 
-console.log(`${chalk.magentaBright('Welcome to C2CC!')}\n\n${chalk.yellowBright('How do you want to connect?')}\n${chalk.greenBright('U')}se server from config\n${chalk.greenBright('E')}nter own server details\n`)
 function FirstBootChoice() {
     var Input = promptsync('Enter U or E: ');
     try {
@@ -391,6 +710,7 @@ function FirstBootChoice() {
     }
 }
 if (config.GIVE_SRVR_CHOICE) {
+    console.log(`${chalk.magentaBright('Welcome to C2CC!')}\n\n${chalk.yellowBright('How do you want to connect?')}\n${chalk.greenBright('U')}se server from config\n${chalk.greenBright('E')}nter own server details\n`)
     FirstBootChoice();
 } else {
     var SERVER_ADDRESS = config.SERVER_ADDR;
@@ -679,7 +999,6 @@ function setupChecks() {
     }
 }
 
-console.clear();
 setupChecks()
 console.log(`Establishing connection with '${SERVER_DETAILS.IP}:${SERVER_DETAILS.PORT}'...`);
 //console.log(Version)
@@ -687,7 +1006,6 @@ console.log(`Establishing connection with '${SERVER_DETAILS.IP}:${SERVER_DETAILS
 const Tips = ['If you lose your prompt (the command finished but the prompt does not return) press ENTER'];
 var randomTip = Tips[Math.floor(Math.random() * Tips.length)];
 console.log(`${chalk.magentaBright(randomTip)}`)
-console.log(`Your config is at: ${ConfigLocation}`);
 const { privateKey, publicKey } = crypto.generateKeyPairSync('rsa', {
     modulusLength: 4096,
     publicKeyEncoding: {
@@ -775,6 +1093,7 @@ socket.on('server_message',function(data) {
 
 socket.on('server_connection_accepted', function(Encdata) {
     const data = decryptEncryptedPacket(Encdata, privateKey);
+    console.clear()
     saveUUID(JSON.stringify(data.uuid));
     savePublicKey(data.pubkey);
     console.log(`\n${chalk.greenBright('Connected to server as')} ${chalk.whiteBright(config.C2CC_ID)}`);
